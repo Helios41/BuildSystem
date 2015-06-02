@@ -1,0 +1,9 @@
+{
+	"name": "buildsystem",
+	"description": "a custom build system",
+	"copyright": "Nope",
+	"authors": ["Helios41"],
+	"dependencies": {
+      
+	}
+}

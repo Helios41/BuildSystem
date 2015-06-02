@@ -1,0 +1,10 @@
+{
+   "copy": 
+   [
+      ["./dub.json", "./bob.json"],
+      ["rt", "dst"]
+   ],
+   "build" : "",
+   "source": "./",
+   "project": "Test"
+}

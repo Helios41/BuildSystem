@@ -1,0 +1,34 @@
+{
+   "default": "Func1",
+   "Func1": 
+   {
+      "language": "C",
+      "copy": 
+      [
+         ["./dub.json", "./bob.json"],
+         ["./", "./test/", ".random"]
+      ],
+      "delete":
+      [
+         "./toremove.txt"
+      ],
+      "type": "executable",
+      "build" : "./test/",
+      "source": "./",
+      "project": "Test"
+   },
+   "MoveBob":
+   {
+      "move":
+      [
+         ["./bob.json", "./test/bob.json"]
+      ]
+   },
+   "CallTest":
+   {
+      "call":
+      [
+         ["./configs/test.json", "Func1", "Func2"]
+      ]
+   }
+}

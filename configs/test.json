@@ -1,0 +1,24 @@
+{
+   "default": "Func",
+   "Func":
+   {
+      "delete":
+      [
+         "./toremove.txt"
+      ]
+   },
+   "Func1":
+   {
+      "delete":
+      [
+         "./test1.txt"
+      ]
+   },
+   "Func2":
+   {
+      "delete":
+      [
+         "./test2.txt"
+      ]
+   }
+}

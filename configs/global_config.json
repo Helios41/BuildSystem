@@ -1,0 +1,26 @@
+{
+   "C":
+   {
+      "executable": 
+      [
+         "vcvars32",
+         "cl /Fe[PROJECT_NAME] *.c"
+      ],
+      "dynamic": 
+      [
+         "cl /Fe[PROJECT_NAME] *.c"
+      ],
+      "static": 
+      [
+         "cl /c *.c",
+         "lib /out:[PROJECT_NAME].lib *.obj"
+      ]
+   },
+   "D":
+   {
+      "executable":
+      [
+         "dub"
+      ]
+   }
+}

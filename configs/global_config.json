@@ -2,25 +2,46 @@
    "C":
    {
       "executable": 
-      [
-         "vcvars32",
-         "cl /Fe[PROJECT_NAME] *.c"
-      ],
+      {
+         "ending": ".exe",
+         "commands":
+         [
+            "vcvars32",
+            "cd [BUILD_DIRECTORY]",
+            "cl /Fe[PROJECT_NAME] *.c"
+         ]
+      },
       "dynamic": 
-      [
-         "cl /Fe[PROJECT_NAME] *.c"
-      ],
+      {
+         "ending": ".dll",
+         "commands":
+         [
+            "vcvars32",
+            "cd [BUILD_DIRECTORY]",
+            "cl /Fe[PROJECT_NAME] *.c"
+         ]
+      },
       "static": 
-      [
-         "cl /c *.c",
-         "lib /out:[PROJECT_NAME].lib *.obj"
-      ]
+      {
+         "ending": ".lib",
+         "commands":
+         [
+            "vcvars32",
+            "cd [BUILD_DIRECTORY]",
+            "cl /c *.c",
+            "lib /out:[PROJECT_NAME].lib *.obj"
+         ]
+      }
    },
    "D":
    {
       "executable":
-      [
-         "dub"
-      ]
+      {
+         "ending": ".exe",
+         "commands":
+         [
+            "dub"
+         ]
+      }
    }
 }

@@ -7,11 +7,13 @@ import std.algorithm.searching;
 import std.c.stdlib;
 import BuildSystemConfigurable;
 import std.uuid;
+import std.conv;
 
 /**
 TODO:
    -build folder format
    -per build operations
+   -incremental versioning
 */
 
 void main(string[] args)
@@ -154,7 +156,7 @@ void RunRoutine(string file_path, string routine_name)
       
       if(can_build)
       {
-         Build(source_folders, build_folder, language_name, project_name, build_type);
+         Build(source_folders, build_folder, language_name, project_name, build_type, 0, 0, 0);
       }
       
       try { CopyOperation(routine_json); } catch {}
@@ -273,7 +275,7 @@ void CallOperation(JSONValue routine_json)
    }
 }
 
-string[] GetLanguageArgs(string file_path, string language_name, string build_type)
+string[] GetLanguageCommands(string file_path, string language_name, string build_type)
 {
    writeln("Loading language ", language_name, " (", build_type, ") from ", file_path);
 
@@ -292,18 +294,24 @@ string[] GetLanguageArgs(string file_path, string language_name, string build_ty
       {
          JSONValue language_json = file_json[language_name];
          
-         if(language_json[build_type].type() == JSON_TYPE.ARRAY)
+         if(language_json[build_type].type() == JSON_TYPE.OBJECT)
          {
-            JSONValue executable_json = language_json[build_type];
-            output = new string[executable_json.array.length];
-            int index = 0;
+            JSONValue build_type_json = language_json[build_type];
             
-            foreach(JSONValue value; executable_json.array)
+            if(build_type_json["commands"].type() == JSON_TYPE.ARRAY)
             {
-               if(value.type() == JSON_TYPE.STRING)
+               JSONValue commands_json = build_type_json["commands"];
+               
+               output = new string[commands_json.array.length];
+               int index = 0;
+            
+               foreach(JSONValue value; commands_json.array)
                {
-                  output[index] = value.str();
-                  ++index;
+                  if(value.type() == JSON_TYPE.STRING)
+                  {
+                     output[index] = value.str();
+                     ++index;
+                  }
                }
             }
          }
@@ -316,6 +324,44 @@ string[] GetLanguageArgs(string file_path, string language_name, string build_ty
    }
 
    return output;
+}
+
+string GetLanguageFileEnding(string file_path, string language_name, string build_type)
+{
+   writeln("Loading language ", language_name, " (", build_type, ") from ", file_path);
+
+   if(!isFile(file_path))
+   {
+      writeln(file_path ~ " not found!");
+      exit(-1);
+   }
+   
+   JSONValue file_json = parseJSON(readText(file_path));
+   
+   try
+   {
+      if(file_json[language_name].type() == JSON_TYPE.OBJECT)
+      {
+         JSONValue language_json = file_json[language_name];
+         
+         if(language_json[build_type].type() == JSON_TYPE.OBJECT)
+         {
+            JSONValue build_type_json = language_json[build_type];
+            
+            if(build_type_json["ending"].type() == JSON_TYPE.STRING)
+            {
+               return build_type_json["ending"].str();
+            }
+         }
+      }
+   }
+   catch
+   {
+      writeln("Language config missing JSON element(s)!");
+      exit(-1);
+   }
+
+   return null;
 }
 
 void CopyFile(string source, string destination)
@@ -374,49 +420,45 @@ void DeleteFolder(string path, string ending = "")
    } catch {}
 }
 
-void Build(string[] sources, string dest, string language, string project_name, string build_type)
+void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version)
 {
-   string temp_dir_name = randomUUID().toString();
-   string[] commands = GetLanguageArgs(GlobalConfigFilePath, language, build_type);
+   string temp_dir = "./" ~ randomUUID().toString();
+   string[] commands = GetLanguageCommands(GlobalConfigFilePath, language, build_type);
+   string file_ending = GetLanguageFileEnding(GlobalConfigFilePath, language, build_type);
+   string version_string = to!string(major_version) ~ "_" ~ to!string(minor_version) ~ "_" ~ to!string(patch_version);
+   string output_file_name = project_name ~ "_" ~ version_string;
    
-   mkdir("./" ~ temp_dir_name);
+   mkdir(temp_dir);
    
    foreach(string source; sources)
    {
-      CopyFile(source, "./build_dir_temp/" ~ source);
-      CopyFolder(source, "./build_dir_temp/");
+      CopyFile(source, temp_dir ~ "/" ~ source);
+      CopyFolder(source, temp_dir ~ "/");
    }
 
    writeln("Building " ~ project_name);
 
+   string command_batch = "";
+   
    foreach(string command_template; commands)
    {
-      string command = command_template.replace("[PROJECT_NAME]", project_name);
-      //system(toStringz(command));
+      string command = command_template.replace("[PROJECT_NAME]", project_name)
+                                       .replace("[BUILD_DIRECTORY]", temp_dir)
+                                       .replace("[OUTPUT_FILE]", output_file_name);
+      
+      if(command_batch == "")
+      {
+         command_batch = command_batch ~ command;
+      }
+      else
+      {
+         command_batch = command_batch ~ " && " ~ command;
+      }
    }
    
-   switch(build_type)
-   {
-      case "executable":
-      {
-         CopyFolder("./" ~ temp_dir_name, dest, ".exe");
-      }
-      break;
-      
-      case "dynamic":
-      {
-         CopyFolder("./" ~ temp_dir_name, dest, ".dll");
-      }
-      break;
-      
-      case "static":
-      {
-         CopyFolder("./" ~ temp_dir_name, dest, ".lib");
-      }
-      break;
-      
-      default:
-   }
+   system(toStringz(command_batch));
    
-   rmdirRecurse("./" ~ temp_dir_name);
+   CopyFile(temp_dir ~ "/" ~ project_name ~ file_ending, dest ~ "/" ~ output_file_name ~ file_ending);
+   
+   rmdirRecurse(temp_dir);
 }

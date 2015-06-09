@@ -10,7 +10,8 @@
       ],
       "delete":
       [
-         "./toremove.txt"
+         "./toremove.txt",
+         "./bob.json"
       ],
       "type": "executable",
       "build" : "./test/",

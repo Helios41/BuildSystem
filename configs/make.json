@@ -16,7 +16,8 @@
       "type": "executable",
       "build" : "./test/",
       "source": "./",
-      "project": "Test"
+      "project": "Test",
+      "version": [0, 0, 0, "test"]
    },
    "MoveBob":
    {

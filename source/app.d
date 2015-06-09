@@ -13,7 +13,7 @@ import std.conv;
 TODO:
    -build folder format
    -per build operations
-   -incremental versioning
+   -optimized builds
 */
 
 void main(string[] args)
@@ -36,9 +36,42 @@ void main(string[] args)
    }
    else if(args.length > 2)
    {
+      bool major_version = false;
+      bool minor_version = false;
+      bool patch_version = false; 
+   
+      bool function_called = false;
+   
       for(int i = 2; args.length > i; ++i)
       {
-         RunRoutine(config_file_path, args[i]);
+         string argument = args[i];
+         
+         if(argument.startsWith("-"))
+         {
+            if(argument == "-major")
+            {
+               major_version = true;
+            }
+            else if(argument == "-minor")
+            {
+               minor_version = true;
+            }
+            else if(argument == "-patch")
+            {
+               patch_version = true;
+            }
+         }
+         else
+         {
+            function_called = true;
+            RunRoutine(config_file_path, argument, major_version, minor_version, patch_version);
+         }
+      }
+      
+      if(!function_called)
+      {
+         string config_file_default_routine = GetDefaultRoutine(config_file_path); 
+         RunRoutine(config_file_path, config_file_default_routine, major_version, minor_version, patch_version);
       }
    }
 }
@@ -71,7 +104,7 @@ string GetDefaultRoutine(string file_path)
    return null;
 }
 
-void RunRoutine(string file_path, string routine_name)
+void RunRoutine(string file_path, string routine_name, bool update_major_version = false, bool update_minor_version = false, bool update_patch_version = false)
 {
    writeln("Executing routine ", routine_name, " in ", file_path);
 
@@ -93,6 +126,11 @@ void RunRoutine(string file_path, string routine_name)
       string project_name;
       string language_name;
       string build_type;
+      
+      int major_version = 0;
+      int minor_version = 0;
+      int patch_version = 0;
+      string version_appended = "";
       
       try
       {
@@ -154,15 +192,52 @@ void RunRoutine(string file_path, string routine_name)
       }
       catch { can_build = false; }
       
+      try
+      {
+         if(routine_json["version"].type() == JSON_TYPE.ARRAY)
+         {
+            JSONValue version_json = routine_json["version"];
+            
+            if(version_json.array.length >= 3)
+            {
+               if(version_json[0].type() == JSON_TYPE.INTEGER)
+               {
+                  major_version = to!int(version_json[0].integer);
+               }
+               
+               if(version_json[1].type() == JSON_TYPE.INTEGER)
+               {
+                  minor_version = to!int(version_json[1].integer);
+               }
+               
+               if(version_json[2].type() == JSON_TYPE.INTEGER)
+               {
+                  patch_version = to!int(version_json[2].integer);
+               }
+            }
+            
+            if(version_json.array.length == 4)
+            {   
+               if(version_json[3].type() == JSON_TYPE.STRING)
+               {
+                  version_appended = version_json[3].str();
+               }
+            }
+         }
+      }
+      catch {}
+      
       if(can_build)
       {
-         Build(source_folders, build_folder, language_name, project_name, build_type, 0, 0, 0);
+         Build(source_folders, build_folder, language_name, project_name, build_type, major_version, minor_version, patch_version, version_appended);
       }
       
       try { CopyOperation(routine_json); } catch {}
       try { DeleteOperation(routine_json); } catch {}
       try { MoveOperation(routine_json); } catch {}
       try { CallOperation(routine_json); } catch {}
+      
+      try { UpdateVersions(file_path, routine_name, update_major_version, update_minor_version, update_patch_version); } catch { writeln("version update failed!"); }
    }
 }
 
@@ -255,15 +330,44 @@ void CallOperation(JSONValue routine_json)
       {
          if(value.type() == JSON_TYPE.ARRAY)
          {
-            if(value[0].type() == JSON_TYPE.STRING)
+            //TODO: add type checking
+            
+            bool major_version = false;
+            bool minor_version = false;
+            bool patch_version = false; 
+         
+            bool function_called = false;
+         
+            for(int i = 1;  value.array.length > i; ++i)
             {
-               for(int i = 1; value.array.length > i; ++i)
+               string argument = value[i].str();
+               
+               if(argument.startsWith("-"))
                {
-                  if(value[i].type() == JSON_TYPE.STRING)
+                  if(argument == "-major")
                   {
-                     RunRoutine(value[0].str(), value[i].str());
+                     major_version = true;
+                  }
+                  else if(argument == "-minor")
+                  {
+                     minor_version = true;
+                  }
+                  else if(argument == "-patch")
+                  {
+                     patch_version = true;
                   }
                }
+               else
+               {
+                  function_called = true;
+                  RunRoutine(value[0].str(), argument, major_version, minor_version, patch_version);
+               }
+            }
+      
+            if(!function_called)
+            {
+               string config_file_default_routine = GetDefaultRoutine(value[0].str()); 
+               RunRoutine(value[0].str(), config_file_default_routine, major_version, minor_version, patch_version);
             }
          }
          else if(value.type() == JSON_TYPE.STRING)
@@ -273,6 +377,41 @@ void CallOperation(JSONValue routine_json)
          }
       }
    }
+}
+
+void UpdateVersions(string file_path, string routine_name, bool major_version, bool minor_version, bool patch_version)
+{
+   JSONValue file_json = parseJSON(readText(file_path));
+   
+   if(major_version || minor_version || patch_version)
+   {
+      if(file_json[routine_name].type() == JSON_TYPE.OBJECT)
+      {
+         //TODO: add type checking
+         
+         if(file_json[routine_name]["version"].type() == JSON_TYPE.ARRAY)
+         {
+            if(major_version)
+            {
+               file_json[routine_name]["version"][0] = file_json[routine_name]["version"][0].integer + 1;
+               file_json[routine_name]["version"][1] = 0;
+               file_json[routine_name]["version"][2] = 0;
+            }
+            else if(minor_version)
+            {
+               file_json[routine_name]["version"][1] = file_json[routine_name]["version"][1].integer + 1;
+               file_json[routine_name]["version"][2] = 0;
+            }
+            else if(patch_version)
+            {
+               file_json[routine_name]["version"][2] = file_json[routine_name]["version"][2].integer + 1;
+            }
+         }
+      }
+   }
+   
+   writeln(file_path ~ ":\n" ~ file_json.toString() ~ "\n");
+   //TODO: write to json file (make it look nice, add newlines)
 }
 
 string[] GetLanguageCommands(string file_path, string language_name, string build_type)
@@ -420,12 +559,12 @@ void DeleteFolder(string path, string ending = "")
    } catch {}
 }
 
-void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version)
+void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version, string appended)
 {
    string temp_dir = "./" ~ randomUUID().toString();
    string[] commands = GetLanguageCommands(GlobalConfigFilePath, language, build_type);
    string file_ending = GetLanguageFileEnding(GlobalConfigFilePath, language, build_type);
-   string version_string = to!string(major_version) ~ "_" ~ to!string(minor_version) ~ "_" ~ to!string(patch_version);
+   string version_string = to!string(major_version) ~ "_" ~ to!string(minor_version) ~ "_" ~ to!string(patch_version) ~ "_" ~ appended;
    string output_file_name = project_name ~ "_" ~ version_string;
    
    mkdir(temp_dir);

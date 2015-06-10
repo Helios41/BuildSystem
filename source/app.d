@@ -12,8 +12,12 @@ import std.conv;
 /**
 TODO:
    -build folder format
+   -x86 and x86_64 builds (ability to set arch from make json file)
    -per build operations
-   -optimized builds
+   -update versions before or after build?
+   -static library dependencies (that aren't already on the include path)
+   -get dependencies from another file
+   -platform specific dependencies
 */
 
 void main(string[] args)
@@ -126,6 +130,8 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       string project_name;
       string language_name;
       string build_type;
+      string static_libraries = "";
+      bool optimized = true;
       
       int major_version = 0;
       int minor_version = 0;
@@ -227,9 +233,31 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       }
       catch {}
       
+      try
+      {
+         if(routine_json["dependencies"].type() == JSON_TYPE.STRING)
+         {
+            static_libraries = routine_json["dependencies"].str();
+         }
+      }
+      catch {}
+      
+      try
+      {
+         if(routine_json["optimized"].type() == JSON_TYPE.TRUE)
+         {
+            optimized = true;
+         }
+         else if(routine_json["optimized"].type() == JSON_TYPE.FALSE)
+         {
+            optimized = false;
+         }
+      }
+      catch {}
+      
       if(can_build)
       {
-         Build(source_folders, build_folder, language_name, project_name, build_type, major_version, minor_version, patch_version, version_appended);
+         Build(source_folders, build_folder, language_name, project_name, build_type, major_version, minor_version, patch_version, version_appended, static_libraries, GetArchitectureName(), optimized);
       }
       
       try { CopyOperation(routine_json); } catch {}
@@ -330,44 +358,48 @@ void CallOperation(JSONValue routine_json)
       {
          if(value.type() == JSON_TYPE.ARRAY)
          {
-            //TODO: add type checking
+            if(value[0].type() == JSON_TYPE.STRING)
+            {
+               bool major_version = false;
+               bool minor_version = false;
+               bool patch_version = false; 
             
-            bool major_version = false;
-            bool minor_version = false;
-            bool patch_version = false; 
-         
-            bool function_called = false;
-         
-            for(int i = 1;  value.array.length > i; ++i)
-            {
-               string argument = value[i].str();
-               
-               if(argument.startsWith("-"))
+               bool function_called = false;
+            
+               for(int i = 1;  value.array.length > i; ++i)
                {
-                  if(argument == "-major")
+                  if(value[i].type() == JSON_TYPE.STRING)
                   {
-                     major_version = true;
-                  }
-                  else if(argument == "-minor")
-                  {
-                     minor_version = true;
-                  }
-                  else if(argument == "-patch")
-                  {
-                     patch_version = true;
+                     string argument = value[i].str();
+                     
+                     if(argument.startsWith("-"))
+                     {
+                        if(argument == "-major")
+                        {
+                           major_version = true;
+                        }
+                        else if(argument == "-minor")
+                        {
+                           minor_version = true;
+                        }
+                        else if(argument == "-patch")
+                        {
+                           patch_version = true;
+                        }
+                     }
+                     else
+                     {
+                        function_called = true;
+                        RunRoutine(value[0].str(), argument, major_version, minor_version, patch_version);
+                     }
                   }
                }
-               else
+         
+               if(!function_called)
                {
-                  function_called = true;
-                  RunRoutine(value[0].str(), argument, major_version, minor_version, patch_version);
+                  string config_file_default_routine = GetDefaultRoutine(value[0].str()); 
+                  RunRoutine(value[0].str(), config_file_default_routine, major_version, minor_version, patch_version);
                }
-            }
-      
-            if(!function_called)
-            {
-               string config_file_default_routine = GetDefaultRoutine(value[0].str()); 
-               RunRoutine(value[0].str(), config_file_default_routine, major_version, minor_version, patch_version);
             }
          }
          else if(value.type() == JSON_TYPE.STRING)
@@ -386,37 +418,40 @@ void UpdateVersions(string file_path, string routine_name, bool major_version, b
    if(major_version || minor_version || patch_version)
    {
       if(file_json[routine_name].type() == JSON_TYPE.OBJECT)
-      {
-         //TODO: add type checking
-         
+      {  
          if(file_json[routine_name]["version"].type() == JSON_TYPE.ARRAY)
          {
-            if(major_version)
+            if(file_json[routine_name]["version"][0].type() == JSON_TYPE.INTEGER &&
+               file_json[routine_name]["version"][1].type() == JSON_TYPE.INTEGER &&
+               file_json[routine_name]["version"][2].type() == JSON_TYPE.INTEGER)
             {
-               file_json[routine_name]["version"][0] = file_json[routine_name]["version"][0].integer + 1;
-               file_json[routine_name]["version"][1] = 0;
-               file_json[routine_name]["version"][2] = 0;
-            }
-            else if(minor_version)
-            {
-               file_json[routine_name]["version"][1] = file_json[routine_name]["version"][1].integer + 1;
-               file_json[routine_name]["version"][2] = 0;
-            }
-            else if(patch_version)
-            {
-               file_json[routine_name]["version"][2] = file_json[routine_name]["version"][2].integer + 1;
+               if(major_version)
+               {
+                  file_json[routine_name]["version"][0] = file_json[routine_name]["version"][0].integer + 1;
+                  file_json[routine_name]["version"][1] = 0;
+                  file_json[routine_name]["version"][2] = 0;
+               }
+               else if(minor_version)
+               {
+                  file_json[routine_name]["version"][1] = file_json[routine_name]["version"][1].integer + 1;
+                  file_json[routine_name]["version"][2] = 0;
+               }
+               else if(patch_version)
+               {
+                  file_json[routine_name]["version"][2] = file_json[routine_name]["version"][2].integer + 1;
+               }
             }
          }
       }
    }
    
-   writeln(file_path ~ ":\n" ~ file_json.toString() ~ "\n");
+   //writeln(file_path ~ ":\n" ~ file_json.toString() ~ "\n");
    //TODO: write to json file (make it look nice, add newlines)
 }
 
 string[] GetLanguageCommands(string file_path, string language_name, string build_type)
 {
-   writeln("Loading language ", language_name, " (", build_type, ") from ", file_path);
+   writeln("Loading language ", language_name, " commands (", build_type, ") from ", file_path);
 
    if(!isFile(file_path))
    {
@@ -467,7 +502,7 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
 
 string GetLanguageFileEnding(string file_path, string language_name, string build_type)
 {
-   writeln("Loading language ", language_name, " (", build_type, ") from ", file_path);
+   writeln("Loading language ", language_name, " ending (", build_type, ") from ", file_path);
 
    if(!isFile(file_path))
    {
@@ -559,7 +594,7 @@ void DeleteFolder(string path, string ending = "")
    } catch {}
 }
 
-void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version, string appended)
+void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version, string appended, string static_libraries, string arch_name, bool optimized)
 {
    string temp_dir = "./" ~ randomUUID().toString();
    string[] commands = GetLanguageCommands(GlobalConfigFilePath, language, build_type);
@@ -575,26 +610,55 @@ void Build(string[] sources, string dest, string language, string project_name, 
       CopyFolder(source, temp_dir ~ "/");
    }
 
-   writeln("Building " ~ project_name);
+   writeln("Building " ~ project_name ~ " for " ~ arch_name ~ (optimized ? "(OPT)" : "(NOPT)"));
 
    string command_batch = "";
    
    foreach(string command_template; commands)
    {
+      bool wrong_configuration = false;
+   
+      if(command_template.startsWith("[ARCH: "))
+      {
+         if(!command_template.startsWith("[ARCH: " ~ arch_name ~ "]"))
+         {
+            wrong_configuration = true;
+         }
+      }
+   
+      if(command_template.startsWith("[OPT]") && !optimized)
+      {
+         wrong_configuration = true;
+      }
+      else if(command_template.startsWith("[NOPT]") && optimized)
+      {
+         wrong_configuration = true;
+      }
+      
+      if(wrong_configuration)
+      {
+         continue;
+      }
+   
       string command = command_template.replace("[PROJECT_NAME]", project_name)
                                        .replace("[BUILD_DIRECTORY]", temp_dir)
-                                       .replace("[OUTPUT_FILE]", output_file_name);
+                                       .replace("[OUTPUT_FILE]", output_file_name)
+                                       .replace("[STATIC_LIBRARIES]", static_libraries)
+                                       .replace("[ARCH: " ~ arch_name ~ "]", "")
+                                       .replace("[OPT]", "")
+                                       .replace("[NOPT]", "");
       
       if(command_batch == "")
       {
-         command_batch = command_batch ~ command;
+         command_batch = command_batch ~ " ( " ~ command ~ " )";
       }
       else
       {
-         command_batch = command_batch ~ " && " ~ command;
+         command_batch = command_batch ~ " && ( " ~ command ~ " )";
       }
    }
    
+   //writeln(command_batch);
    system(toStringz(command_batch));
    
    CopyFile(temp_dir ~ "/" ~ project_name ~ file_ending, dest ~ "/" ~ output_file_name ~ file_ending);

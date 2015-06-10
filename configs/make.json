@@ -16,6 +16,8 @@
       "type": "executable",
       "build" : "./test/",
       "source": "./",
+      "dependencies": "User32.lib",
+      "optimized": false,
       "project": "Test",
       "version": [0, 0, 0, "test"]
    },

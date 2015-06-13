@@ -1,7 +1,5 @@
 module BuildSystemConfigurable;
 
-import std.container;
-
 const string GlobalConfigFilePath = "./configs/global_config.json";
 
 string GetOSName()

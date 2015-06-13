@@ -13,6 +13,14 @@
          "./toremove.txt",
          "./bob.json"
       ],
+      "per":
+      {
+         "copy":
+         [
+            ["./dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
+            ["./", "[OUTPUT_DIRECTORY]/jsons/", ".json"]
+         ]
+      },
       "type": "executable",
       "build" : "./test/",
       "source": "./",

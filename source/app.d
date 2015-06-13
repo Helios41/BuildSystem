@@ -8,14 +8,13 @@ import std.c.stdlib;
 import BuildSystemConfigurable;
 import std.uuid;
 import std.conv;
-import std.container;
 
 /**
 TODO:
-   -per build operations
+   -per build call operation
    -make stuff non case specific (e.g. architecture names)
    -update versions before or after build?
-   -get dependencies from another file
+   -clean up code!
 */
 
 void main(string[] args)
@@ -278,7 +277,7 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       }
       catch {}
       
-      writeln("Static Deps: ", static_libraries);
+      //writeln("Static Deps: ", static_libraries);
       
       if(can_build)
       {
@@ -287,8 +286,14 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
          
          foreach(string arch_name; arch_names)
          {
-            Build(source_folders, build_folder, language_name, project_name, build_type, major_version, minor_version, patch_version, version_appended, static_libraries, arch_name, optimized, OS_name);
-            //Per build operations
+            string output_directory = (build_folder.endsWith("/") ? build_folder[0 .. build_folder.lastIndexOf("/")] : build_folder) ~ "/" ~ OS_name ~ "_" ~ arch_name;
+         
+            Build(source_folders, output_directory, language_name, project_name, build_type, major_version, minor_version, patch_version, version_appended, static_libraries, arch_name, optimized, OS_name);
+            
+            try { CopyPerOperation(routine_json, output_directory); } catch {}
+            try { DeletePerOperation(routine_json, output_directory); } catch {}
+            try { MovePerOperation(routine_json, output_directory); } catch {}
+            //try { CallPerOperation(routine_json, output_directory); } catch {}
          }
       }
       
@@ -298,6 +303,43 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       try { CallOperation(routine_json); } catch {}
       
       try { UpdateVersions(file_path, routine_name, update_major_version, update_minor_version, update_patch_version); } catch { writeln("version update failed!"); }
+   }
+}
+
+void CopyPerOperation(JSONValue routine_json, string output_directory)
+{
+   if(routine_json["per"].type() == JSON_TYPE.OBJECT)
+   {
+      JSONValue per_operations_json = routine_json["per"];
+      
+      if(per_operations_json["copy"].type() == JSON_TYPE.ARRAY)
+      {
+         writeln("Executing copies:");
+         
+         foreach(JSONValue value; per_operations_json["copy"].array)
+         {
+            if(value.type() == JSON_TYPE.ARRAY)
+            {
+               if(value.array.length == 2)
+               {
+                  string copy_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+                  string copy_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+               
+                  writeln("\t", copy_source, " -> ", copy_dest);
+                  CopyFile(copy_source, copy_dest);
+               }
+               
+               if(value.array.length == 3)
+               {
+                  string copy_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+                  string copy_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+               
+                  writeln("\t", copy_source, " (", value[2].str(), ") -> ", copy_dest);
+                  CopyFolder(copy_source, copy_dest, value[2].str());
+               }
+            }
+         }
+      }
    }
 }
 
@@ -327,6 +369,40 @@ void CopyOperation(JSONValue routine_json)
    }
 }
 
+void DeletePerOperation(JSONValue routine_json, string output_directory)
+{
+   if(routine_json["per"].type() == JSON_TYPE.OBJECT)
+   {
+      JSONValue per_operations_json = routine_json["per"];
+   
+      if(per_operations_json["delete"].type() == JSON_TYPE.ARRAY)
+      {
+         writeln("Executing deletes:");
+         
+         foreach(JSONValue value; per_operations_json["delete"].array)
+         {
+            if(value.type() == JSON_TYPE.ARRAY)
+            {
+               string to_delete = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+            
+               if(value.array.length == 2)
+               {
+                  writeln("\t", to_delete, " (", value[1].str(), ") -> /dev/null");
+                  DeleteFolder(to_delete, value[1].str());
+               }
+            }
+            else if(value.type() == JSON_TYPE.STRING)
+            {
+               string to_delete = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+            
+               writeln("\t", to_delete, " -> /dev/null");
+               DeleteFile(to_delete);
+            }
+         }
+      }
+   }
+}
+
 void DeleteOperation(JSONValue routine_json)
 {
    if(routine_json["delete"].type() == JSON_TYPE.ARRAY)
@@ -347,6 +423,45 @@ void DeleteOperation(JSONValue routine_json)
          {
             writeln("\t", value.str(), " -> /dev/null");
             DeleteFile(value.str());
+         }
+      }
+   }
+}
+
+void MovePerOperation(JSONValue routine_json, string output_directory)
+{
+   if(routine_json["per"].type() == JSON_TYPE.OBJECT)
+   {
+      JSONValue per_operations_json = routine_json["per"];
+      
+      if(per_operations_json["move"].type() == JSON_TYPE.ARRAY)
+      {
+         writeln("Executing moves:");
+         
+         foreach(JSONValue value; per_operations_json["move"].array)
+         {
+            if(value.type() == JSON_TYPE.ARRAY)
+            {
+               if(value.array.length == 2)
+               {
+                  string move_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+                  string move_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+               
+                  writeln("\t", move_source, " -> ", move_dest);
+                  CopyFile(move_source, move_dest);
+                  DeleteFile(move_source);
+               }
+               
+               if(value.array.length == 3)
+               {
+                  string move_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+                  string move_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
+               
+                  writeln("\t", move_source, " (", value[2].str(), ") -> ", move_dest);
+                  CopyFolder(move_source, move_dest, value[2].str());
+                  DeleteFolder(move_source, value[2].str());
+               }
+            }
          }
       }
    }
@@ -655,6 +770,12 @@ void CopyFile(string source, string destination)
 {
    try
    {
+      string dest_directory = destination[0 .. destination.lastIndexOf("/")];
+      if(!exists(dest_directory))
+      {
+         mkdir(dest_directory);
+      }
+   
       if(isFile(source))
       {
          copy(source, destination, PreserveAttributes.no);
@@ -666,7 +787,7 @@ void CopyFolder(string source, string destination, string ending = "")
 {
    try
    {
-      if(isDir(source) && isDir(destination))
+      if(isDir(source))
       {
          foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
          {
@@ -709,20 +830,17 @@ void DeleteFolder(string path, string ending = "")
 
 void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version, string appended, string static_libraries, string arch_name, bool optimized, string OS_name)
 {
-   dest = dest.endsWith("/") ? dest[0 .. dest.lastIndexOf("/")] : dest;
-
    string temp_dir = "./" ~ randomUUID().toString();
    string[] commands = GetLanguageCommands(GlobalConfigFilePath, language, build_type);
    string file_ending = GetLanguageFileEnding(GlobalConfigFilePath, language, build_type);
    string version_string = to!string(major_version) ~ "_" ~ to!string(minor_version) ~ "_" ~ to!string(patch_version) ~ "_" ~ appended;
    string output_file_name = project_name ~ "_" ~ version_string;
-   string output_directory = dest ~ "/" ~ OS_name ~ "_" ~ arch_name;
    
    mkdir(temp_dir);
    
-   if(!exists(output_directory))
+   if(!exists(dest))
    {
-      mkdir(output_directory);
+      mkdir(dest);
    }
    
    foreach(string source; sources)
@@ -759,7 +877,7 @@ void Build(string[] sources, string dest, string language, string project_name, 
    //writeln(command_batch);
    system(toStringz(command_batch));
    
-   CopyFile(temp_dir ~ "/" ~ project_name ~ file_ending, output_directory ~ "/" ~ output_file_name ~ file_ending);
+   CopyFile(temp_dir ~ "/" ~ project_name ~ file_ending, dest ~ "/" ~ output_file_name ~ file_ending);
    
    rmdirRecurse(temp_dir);
 }

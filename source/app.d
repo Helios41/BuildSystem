@@ -8,16 +8,14 @@ import std.c.stdlib;
 import BuildSystemConfigurable;
 import std.uuid;
 import std.conv;
+import std.container;
 
 /**
 TODO:
-   -build folder format
-   -x86 and x86_64 builds (ability to set arch from make json file)
    -per build operations
+   -make stuff non case specific (e.g. architecture names)
    -update versions before or after build?
-   -static library dependencies (that aren't already on the include path)
    -get dependencies from another file
-   -platform specific dependencies
 */
 
 void main(string[] args)
@@ -235,15 +233,6 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       
       try
       {
-         if(routine_json["dependencies"].type() == JSON_TYPE.STRING)
-         {
-            static_libraries = routine_json["dependencies"].str();
-         }
-      }
-      catch {}
-      
-      try
-      {
          if(routine_json["optimized"].type() == JSON_TYPE.TRUE)
          {
             optimized = true;
@@ -255,9 +244,52 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       }
       catch {}
       
+      try
+      {
+         string arch_name = GetArchitectureNames(GlobalConfigFilePath)[0];
+         string OS_name = GetOSName();
+      
+         if(routine_json["dependencies"].type() == JSON_TYPE.STRING)
+         {
+            string dependency = routine_json["dependencies"].str();
+            
+            if(IsProperPlatform(dependency, arch_name, OS_name, optimized))
+            {
+               static_libraries = static_libraries ~ " " ~ RemoveTags(dependency, arch_name, OS_name);
+            }
+         }
+         else if(routine_json["dependencies"].type() == JSON_TYPE.ARRAY)
+         {
+            JSONValue dependencies_json = routine_json["dependencies"];
+            
+            foreach(JSONValue element_json; dependencies_json.array)
+            {
+               if(element_json.type == JSON_TYPE.STRING)
+               {
+                  string dependency = element_json.str();
+                  
+                  if(IsProperPlatform(dependency, arch_name, OS_name, optimized))
+                  {
+                     static_libraries = static_libraries ~ " " ~ RemoveTags(dependency, arch_name, OS_name);
+                  }
+               }
+            }
+         }
+      }
+      catch {}
+      
+      writeln("Static Deps: ", static_libraries);
+      
       if(can_build)
       {
-         Build(source_folders, build_folder, language_name, project_name, build_type, major_version, minor_version, patch_version, version_appended, static_libraries, GetArchitectureName(), optimized);
+         string OS_name = GetOSName();
+         string[] arch_names = GetArchitectureNames(GlobalConfigFilePath);
+         
+         foreach(string arch_name; arch_names)
+         {
+            Build(source_folders, build_folder, language_name, project_name, build_type, major_version, minor_version, patch_version, version_appended, static_libraries, arch_name, optimized, OS_name);
+            //Per build operations
+         }
       }
       
       try { CopyOperation(routine_json); } catch {}
@@ -538,6 +570,87 @@ string GetLanguageFileEnding(string file_path, string language_name, string buil
    return null;
 }
 
+string[] GetArchitectureNames(string file_path)
+{
+   writeln("Loading available architectures from ", file_path);
+
+   if(!isFile(file_path))
+   {
+      writeln(file_path ~ " not found!");
+      exit(-1);
+   }
+   
+   JSONValue file_json = parseJSON(readText(file_path));
+   string[] arch_names = null;
+   
+   try
+   {
+      if(file_json["architectures"].type() == JSON_TYPE.ARRAY)
+      {
+         JSONValue arch_array_json = file_json["architectures"];
+         arch_names = new string[arch_array_json.array.length];
+         int index = 0;
+         
+         foreach(JSONValue element_json; arch_array_json.array)
+         {
+            if(element_json.type() == JSON_TYPE.STRING)
+            {
+               arch_names[index++] = element_json.str();
+            }
+         }
+      }
+   }
+   catch 
+   {
+      writeln("No available architectures present!");
+      exit(-1);
+   }
+   
+   return arch_names;
+}
+
+bool IsProperPlatform(string tag, string arch_name, string OS_name, bool optimized)
+{ 
+   bool wrong_configuration = false;
+   
+   if(tag.startsWith("[ARCH: "))
+   {
+      if(!tag.startsWith("[ARCH: " ~ arch_name ~ "]"))
+      {
+         wrong_configuration = true;
+      }
+   }
+   
+   if(tag.startsWith("[OS: "))
+   {
+      if(!tag.startsWith("[OS: " ~ OS_name ~ "]"))
+      {
+         wrong_configuration = true;
+      }
+   }
+   
+   if(tag.startsWith("[OPT]") && !optimized)
+   {
+      wrong_configuration = true;
+   }
+   else if(tag.startsWith("[NOPT]") && optimized)
+   {
+      wrong_configuration = true;
+   }
+   
+   return !wrong_configuration;
+}
+
+string RemoveTags(string tag, string arch_name, string OS_name)
+{
+   string new_tag = tag.replace("[ARCH: " ~ arch_name ~ "]", "")
+                       .replace("[OS: " ~ OS_name ~ "]", "")
+                       .replace("[OPT]", "")
+                       .replace("[NOPT]", "");
+                       
+   return new_tag;
+}
+
 void CopyFile(string source, string destination)
 {
    try
@@ -594,15 +707,23 @@ void DeleteFolder(string path, string ending = "")
    } catch {}
 }
 
-void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version, string appended, string static_libraries, string arch_name, bool optimized)
+void Build(string[] sources, string dest, string language, string project_name, string build_type, int major_version, int minor_version, int patch_version, string appended, string static_libraries, string arch_name, bool optimized, string OS_name)
 {
+   dest = dest.endsWith("/") ? dest[0 .. dest.lastIndexOf("/")] : dest;
+
    string temp_dir = "./" ~ randomUUID().toString();
    string[] commands = GetLanguageCommands(GlobalConfigFilePath, language, build_type);
    string file_ending = GetLanguageFileEnding(GlobalConfigFilePath, language, build_type);
    string version_string = to!string(major_version) ~ "_" ~ to!string(minor_version) ~ "_" ~ to!string(patch_version) ~ "_" ~ appended;
    string output_file_name = project_name ~ "_" ~ version_string;
+   string output_directory = dest ~ "/" ~ OS_name ~ "_" ~ arch_name;
    
    mkdir(temp_dir);
+   
+   if(!exists(output_directory))
+   {
+      mkdir(output_directory);
+   }
    
    foreach(string source; sources)
    {
@@ -616,52 +737,29 @@ void Build(string[] sources, string dest, string language, string project_name, 
    
    foreach(string command_template; commands)
    {
-      bool wrong_configuration = false;
-   
-      if(command_template.startsWith("[ARCH: "))
+      if(IsProperPlatform(command_template, arch_name, OS_name, optimized))
       {
-         if(!command_template.startsWith("[ARCH: " ~ arch_name ~ "]"))
+         string command = RemoveTags(command_template, arch_name, OS_name)
+                          .replace("[PROJECT_NAME]", project_name)
+                          .replace("[BUILD_DIRECTORY]", temp_dir)
+                          .replace("[OUTPUT_FILE]", output_file_name)
+                          .replace("[STATIC_LIBRARIES]", static_libraries);
+         
+         if(command_batch == "")
          {
-            wrong_configuration = true;
+            command_batch = command_batch ~ " ( " ~ command ~ " )";
          }
-      }
-   
-      if(command_template.startsWith("[OPT]") && !optimized)
-      {
-         wrong_configuration = true;
-      }
-      else if(command_template.startsWith("[NOPT]") && optimized)
-      {
-         wrong_configuration = true;
-      }
-      
-      if(wrong_configuration)
-      {
-         continue;
-      }
-   
-      string command = command_template.replace("[PROJECT_NAME]", project_name)
-                                       .replace("[BUILD_DIRECTORY]", temp_dir)
-                                       .replace("[OUTPUT_FILE]", output_file_name)
-                                       .replace("[STATIC_LIBRARIES]", static_libraries)
-                                       .replace("[ARCH: " ~ arch_name ~ "]", "")
-                                       .replace("[OPT]", "")
-                                       .replace("[NOPT]", "");
-      
-      if(command_batch == "")
-      {
-         command_batch = command_batch ~ " ( " ~ command ~ " )";
-      }
-      else
-      {
-         command_batch = command_batch ~ " && ( " ~ command ~ " )";
+         else
+         {
+            command_batch = command_batch ~ " && ( " ~ command ~ " )";
+         }
       }
    }
    
    //writeln(command_batch);
    system(toStringz(command_batch));
    
-   CopyFile(temp_dir ~ "/" ~ project_name ~ file_ending, dest ~ "/" ~ output_file_name ~ file_ending);
+   CopyFile(temp_dir ~ "/" ~ project_name ~ file_ending, output_directory ~ "/" ~ output_file_name ~ file_ending);
    
    rmdirRecurse(temp_dir);
 }

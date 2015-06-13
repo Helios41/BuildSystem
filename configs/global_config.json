@@ -1,4 +1,9 @@
 {
+   "architectures": 
+   [
+      "X86_64",
+      "X86"
+   ],
    "C":
    {
       "executable": 

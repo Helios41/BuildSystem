@@ -25,7 +25,7 @@
          [
             "vcvars32",
             "cd [BUILD_DIRECTORY]",
-            "cl /Fe[PROJECT_NAME] *.c /link *.lib [STATIC_LIBRARIES]"
+            "cl /LD /Fe[PROJECT_NAME] *.c /link *.lib [STATIC_LIBRARIES]"
          ]
       },
       "static": 

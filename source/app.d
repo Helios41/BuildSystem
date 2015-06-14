@@ -13,7 +13,10 @@ import std.conv;
 TODO:
    -per build call operation
    -make stuff non case specific (e.g. architecture names)
-   -update versions before or after build?
+   -"operations" & "peroperations" arrays
+   -"Build" operation, if not called call build after operations are executed
+   -build dll on windows (without delspec or .def file)
+   -ability to specify functions to expose as dll
    -clean up code!
 */
 
@@ -279,6 +282,10 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       
       //writeln("Static Deps: ", static_libraries);
       
+      try { ExecuteOperations(routine_json); } catch {}
+      
+      try { UpdateVersions(file_path, routine_name, update_major_version, update_minor_version, update_patch_version); } catch { writeln("version update failed!"); }
+      
       if(can_build)
       {
          string OS_name = GetOSName();
@@ -301,8 +308,46 @@ void RunRoutine(string file_path, string routine_name, bool update_major_version
       try { DeleteOperation(routine_json); } catch {}
       try { MoveOperation(routine_json); } catch {}
       try { CallOperation(routine_json); } catch {}
+   }
+}
+
+void ExecuteOperations(JSONValue routine_json)
+{
+   if(routine_json["operations"].type() == JSON_TYPE.ARRAY)
+   {
+      JSONValue operations_json = routine_json["operations"];
       
-      try { UpdateVersions(file_path, routine_name, update_major_version, update_minor_version, update_patch_version); } catch { writeln("version update failed!"); }
+      foreach(JSONValue operation_json; operations_json.array)
+      {
+         if(operation_json.type() == JSON_TYPE.ARRAY)
+         {
+            
+         }
+         else if(operation_json.type() == JSON_TYPE.STRING)
+         {
+         
+         }
+      }
+   }
+}
+
+void ExecutePerOperations(JSONValue routine_json, string output_dictionary)
+{
+   if(routine_json["peroperations"].type() == JSON_TYPE.ARRAY)
+   {
+      JSONValue operations_json = routine_json["peroperations"];
+      
+      foreach(JSONValue operation_json; operations_json.array)
+      {
+         if(operation_json.type() == JSON_TYPE.ARRAY)
+         {
+            
+         }
+         else if(operation_json.type() == JSON_TYPE.STRING)
+         {
+         
+         }
+      }
    }
 }
 

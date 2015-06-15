@@ -3,15 +3,15 @@
    "Func1": 
    {
       "language": "C",
-      "copy": 
+      "operations":
       [
-         ["./dub.json", "./bob.json"],
-         ["./", "./test/", ".random"]
-      ],
-      "delete":
-      [
-         "./toremove.txt",
-         "./bob.json"
+         ["copy", "./dub.json", "./bob.json"],
+         ["||", "./", "./test/", ".random"],
+         ["delete", "./toremove.txt"],
+         ["||", "./bob.json"],
+         ["print", "before building!"],
+         "build",
+         ["print", "just built!"]
       ],
       "per":
       {
@@ -31,16 +31,17 @@
    },
    "MoveBob":
    {
-      "move":
+      "operations":
       [
-         ["./bob.json", "./test/bob.json"]
+         ["move", "./bob.json", "./test/bob.json"]
       ]
    },
    "CallTest":
    {
-      "call":
+      "operations":
       [
-         ["./configs/test.json", "Func1", "Func2"]
+         ["call", "./configs/test.json", "Func1", "Func2"],
+         ["||", "./configs/test.json"]
       ]
    }
 }

@@ -2,23 +2,24 @@
    "default": "Func",
    "Func":
    {
-      "delete":
+      "operations":
       [
-         "./toremove.txt"
+         ["print", "test"],
+         ["delete", "./toremove.txt"]
       ]
    },
    "Func1":
    {
-      "delete":
+      "operations":
       [
-         "./test1.txt"
+         ["delete", "./test1.txt"]
       ]
    },
    "Func2":
    {
-      "delete":
+      "operations":
       [
-         "./test2.txt"
+         ["delete", "./test2.txt"]
       ]
    }
 }

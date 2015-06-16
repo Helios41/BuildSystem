@@ -8,6 +8,7 @@ import std.c.stdlib;
 import BuildSystemConfigurable;
 import std.uuid;
 import std.conv;
+import std.container;
 
 /**
 TODO:
@@ -353,42 +354,54 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
             {
                operation_token = last_operation_token;
             }
-            string[] operation_params = new string[operation_json.array.length - 1];
+            
+            //TODO: use list instead of array, convert to array after reading params
+            string[] operation_param_array = null; //new string[operation_json.array.length - 1];
+            Array!string operation_param_list = Array!string();
+            
+            operation_param_array = new string[operation_json.array.length - 1];
             for(int i = 1; i < operation_json.array.length; ++i)
             {
-               operation_params[i - 1] = operation_json[i].str();
+               if(operation_json[i].type() == JSON_TYPE.STRING)
+               {
+                  operation_param_array[i - 1] = operation_json[i].str();
+               }
+               else if(operation_json[i].type() == JSON_TYPE.ARRAY)
+               {
+                  //TODO: handle this!
+               }
             }
             
             switch(operation_token)
             {
                case "move":
                {
-                  try { MoveOperation(operation_params); } catch {}
+                  try { MoveOperation(operation_param_array); } catch {}
                }
                break;
                
                case "delete":
                {
-                  try { DeleteOperation(operation_params); } catch {}
+                  try { DeleteOperation(operation_param_array); } catch {}
                }
                break;
                
                case "copy":
                {
-                  try { CopyOperation(operation_params); } catch {}
+                  try { CopyOperation(operation_param_array); } catch {}
                }
                break;
                
                case "call":
                {
-                  try { CallOperation(operation_params); } catch {}
+                  try { CallOperation(operation_param_array); } catch {}
                }
                break;
                
                case "print":
                {
                   string to_print = "";
-                  foreach(string args; operation_params)
+                  foreach(string args; operation_param_array)
                   {
                      to_print = to_print ~ args;
                   }
@@ -432,22 +445,63 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
    }
 }
 
-void ExecutePerOperations(JSONValue routine_json, string output_dictionary)
+void ExecutePerOperations(string[] operation_tokens, BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
 {
-   if(routine_json["peroperations"].type() == JSON_TYPE.ARRAY)
+   string last_operation_token = "";
+   
+   foreach(string current_operation_token; operation_tokens)
    {
-      JSONValue operations_json = routine_json["peroperations"];
-      
-      foreach(JSONValue operation_json; operations_json.array)
+      string operation_token = current_operation_token;
+      if((operation_token ==  "=") || (operation_token ==  "||"))
       {
-         if(operation_json.type() == JSON_TYPE.ARRAY)
+         operation_token = last_operation_token;
+      }
+      else
+      {
+         last_operation_token = operation_token;
+      }
+      
+      string[] operation_param_array = null;
+      Array!string operation_param_list = Array!string();
+      
+      switch(operation_token)
+      {
+         case "move":
          {
-            
+            writeln("PerMove");
          }
-         else if(operation_json.type() == JSON_TYPE.STRING)
-         {
+         break;
          
+         case "delete":
+         {
+            writeln("PerDelete");
          }
+         break;
+         
+         case "copy":
+         {
+            writeln("PerCopy");
+         }
+         break;
+         
+         case "call":
+         {
+            writeln("PerCall");
+         }
+         break;
+         
+         case "print":
+         {
+            string to_print = "";
+            foreach(string args; operation_param_array)
+            {
+               to_print = to_print ~ args;
+            }
+            writeln("[print] ", to_print);
+         }
+         break;
+         
+         default: assert(0);
       }
    }
 }

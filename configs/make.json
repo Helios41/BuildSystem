@@ -11,7 +11,10 @@
          ["||", "./bob.json"],
          ["print", "before building!"],
          "build",
-         ["print", "just built!"]
+         ["print", "just built!"],
+         ["print", "We're on an OS! ", "[OS: Windows] We're on Windows!"],
+         ["[OS: Windows] print", "Printed on Windows"],
+         ["[OS: Linux] print", "Printed on Linux"]
       ],
       "per-operations":
       [

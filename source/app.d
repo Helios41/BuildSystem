@@ -14,7 +14,6 @@ import std.container;
 TODO:
    -build dll on windows with .def file
    -ability to specify functions to expose as dll
-   -add "IsProperPlatform" - esque functionality to other stuff
    -attribute system to replace static libraries & exported functions *MOAR DYNAMICALITY*
    -make all paths relative to the current script
 */
@@ -405,12 +404,24 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                operation_token = last_operation_token;
             }
             
+            if(IsProperPlatform(operation_token, build_info.platform))
+            {
+               operation_token = RemoveTags(operation_token, build_info.platform);
+            }
+            else
+            {
+               continue;
+            }
+            
             string[] operation_params = new string[operation_json.array.length - 1];
             for(int i = 1; i < operation_json.array.length; ++i)
             {
                if(operation_json[i].type() == JSON_TYPE.STRING)
                {
-                  operation_params[i - 1] = operation_json[i].str();
+                  if(IsProperPlatform(operation_json[i].str(), build_info.platform))
+                  {
+                     operation_params[i - 1] = RemoveTags(operation_json[i].str(), build_info.platform);
+                  }
                }
             }
             
@@ -525,25 +536,37 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
                operation_token = last_operation_token;
             }
             
+            if(IsProperPlatform(operation_token, build_info.platform))
+            {
+               operation_token = RemoveTags(operation_token, build_info.platform);
+            }
+            else
+            {
+               continue;
+            }
+            
             string[] operation_params = new string[operation_json.array.length - 1];
             for(int i = 1; i < operation_json.array.length; ++i)
             {
                if(operation_json[i].type() == JSON_TYPE.STRING)
                {
-                  operation_params[i - 1] = operation_json[i].str()
-                                            .replace("[OUTPUT_DIRECTORY]", output_directory)
-                                            .replace("[ARCH_NAME]", build_info.platform.arch)
-                                            .replace("[OS_NAME]", build_info.platform.OS)
-                                            .replace("[PROJECT_NAME]", build_info.project_name);
-                                            
-                  if(version_info.is_versioned)
+                  if(IsProperPlatform(operation_json[i].str(), build_info.platform))
                   {
-                     operation_params[i - 1] = operation_params[i - 1]
-                                                   .replace("[MAJOR_VERSION]", to!string(version_info.major))
-                                                   .replace("[MINOR_VERSION]", to!string(version_info.minor))
-                                                   .replace("[PATCH_VERSION]", to!string(version_info.patch))
-                                                   .replace("[APPENDED_VERSION]", version_info.appended)
-                                                   .replace("[VERSION]", version_string);
+                     operation_params[i - 1] = RemoveTags(operation_json[i].str(), build_info.platform)
+                                               .replace("[OUTPUT_DIRECTORY]", output_directory)
+                                               .replace("[ARCH_NAME]", build_info.platform.arch)
+                                               .replace("[OS_NAME]", build_info.platform.OS)
+                                               .replace("[PROJECT_NAME]", build_info.project_name);
+                                               
+                     if(version_info.is_versioned)
+                     {
+                        operation_params[i - 1] = operation_params[i - 1]
+                                                      .replace("[MAJOR_VERSION]", to!string(version_info.major))
+                                                      .replace("[MINOR_VERSION]", to!string(version_info.minor))
+                                                      .replace("[PATCH_VERSION]", to!string(version_info.patch))
+                                                      .replace("[APPENDED_VERSION]", version_info.appended)
+                                                      .replace("[VERSION]", version_string);
+                     }
                   }
                }
             }
@@ -967,6 +990,22 @@ string RemoveTags(string tag, PlatformInformation platform)
                        .replace("[OS: " ~ platform.OS ~ "]", "")
                        .replace("[OPT]", "")
                        .replace("[NOPT]", "");
+                       
+   int letter_index = 0;              
+   foreach(char c; new_tag)
+   {
+      if(c != ' ')
+         break;
+         
+      ++letter_index;
+   }
+   
+   if(letter_index != 0)
+   {
+      //writeln(letter_index, " : |", new_tag);
+      new_tag = new_tag[letter_index .. $];
+      //writeln("|", new_tag);
+   }
                        
    return new_tag;
 }

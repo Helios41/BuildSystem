@@ -12,20 +12,19 @@ import std.container;
 
 /**
 TODO:
-   -per build call operation
-   -make stuff non case specific (e.g. architecture names)
-   -"peroperations" array
-   -build dll on windows (without delspec or .def file)
+   -build dll on windows with .def file
    -ability to specify functions to expose as dll
-   -clean up code!
+   -add "IsProperPlatform" - esque functionality to other stuff
+   -attribute system to replace static libraries & exported functions *MOAR DYNAMICALITY*
+   -make all paths relative to the current script
 */
 
-enum VersionType
+enum VersionType : string
 {
-   None,
-   Major,
-   Minor,
-   Patch
+   None = "None",
+   Major = "Major",
+   Minor = "Minor",
+   Patch = "Patch"
 }
 
 struct VersionInformation
@@ -56,11 +55,15 @@ struct BuildInformation
    string[] source_folders;
    string build_folder;
    string project_name;
+   string[][string] attributes;
+   
    string[] static_libraries;
+   string[] exported_functions;
 }
 
 struct BuildRoutine
-{
+{  
+   string directory;
    string path;
    string name;
 }
@@ -174,10 +177,13 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       build_info.source_folders = null;
       build_info.build_folder = "";
       build_info.project_name = "";
-      build_info.static_libraries = null;
       build_info.platform.optimized = true;
       build_info.platform.arch = "";
       build_info.platform.OS = GetOSName();
+      
+      //TODO: remove in favour of attrib system
+      build_info.static_libraries = null;
+      build_info.exported_functions = null;
       
       VersionInformation version_info;
       
@@ -192,6 +198,7 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       
       routine_info.path = file_path;
       routine_info.name = routine_name;
+      routine_info.directory = file_path[0 .. file_path.lastIndexOf("/")];
       
       try
       {
@@ -276,6 +283,10 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
                   version_info.patch = to!int(version_json[2].integer);
                }
             }
+            else
+            {
+               version_info.is_versioned = false;
+            }
             
             if(version_json.array.length == 4)
             {   
@@ -303,6 +314,17 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       
       try
       {
+         //TODO: attrib system
+         foreach(JSONValue attribute_json; routine_json.array)
+         {
+            writeln(routine_json.array.length);
+         }
+      } catch { writeln("Attrib system broke!"); }
+      
+      //PORT TO ATTRIB SYSTEM - BEGIN
+      
+      try
+      {
          if(routine_json["dependencies"].type() == JSON_TYPE.STRING)
          {
             build_info.static_libraries = new string[1];
@@ -311,11 +333,12 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
          else if(routine_json["dependencies"].type() == JSON_TYPE.ARRAY)
          {
             JSONValue dependencies_json = routine_json["dependencies"];
+            build_info.static_libraries = new string[dependencies_json.array.length];
             int index = 0;
             
             foreach(JSONValue element_json; dependencies_json.array)
             {
-               if(element_json.type == JSON_TYPE.STRING)
+               if(element_json.type() == JSON_TYPE.STRING)
                {
                   build_info.static_libraries[index] = element_json.str();
                   ++index;
@@ -324,6 +347,33 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
          }
       }
       catch {}
+      
+      try
+      {
+         if(routine_json["exports"].type() == JSON_TYPE.STRING)
+         {
+            build_info.exported_functions = new string[1];
+            build_info.exported_functions[0] = routine_json["exports"].str();
+         }
+         else if(routine_json["exports"].type() == JSON_TYPE.ARRAY)
+         {
+            JSONValue dependencies_json = routine_json["exports"];
+            build_info.static_libraries = new string[dependencies_json.array.length];
+            int index = 0;
+            
+            foreach(JSONValue element_json; dependencies_json.array)
+            {
+               if(element_json.type() == JSON_TYPE.STRING)
+               {
+                  build_info.static_libraries[index] = element_json.str();
+                  ++index;
+               }
+            }
+         }
+      }
+      catch {}
+      
+      //PORT TO ATTRIB SYSTEM - END
       
       try { ExecuteOperations(routine_info, build_info, version_info); } catch {}
    }
@@ -355,20 +405,12 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                operation_token = last_operation_token;
             }
             
-            //TODO: use list instead of array, convert to array after reading params
-            string[] operation_param_array = null; //new string[operation_json.array.length - 1];
-            Array!string operation_param_list = Array!string();
-            
-            operation_param_array = new string[operation_json.array.length - 1];
+            string[] operation_params = new string[operation_json.array.length - 1];
             for(int i = 1; i < operation_json.array.length; ++i)
             {
                if(operation_json[i].type() == JSON_TYPE.STRING)
                {
-                  operation_param_array[i - 1] = operation_json[i].str();
-               }
-               else if(operation_json[i].type() == JSON_TYPE.ARRAY)
-               {
-                  //TODO: handle this!
+                  operation_params[i - 1] = operation_json[i].str();
                }
             }
             
@@ -376,32 +418,32 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
             {
                case "move":
                {
-                  try { MoveOperation(operation_param_array); } catch {}
+                  try { MoveOperation(operation_params); } catch {}
                }
                break;
                
                case "delete":
                {
-                  try { DeleteOperation(operation_param_array); } catch {}
+                  try { DeleteOperation(operation_params); } catch {}
                }
                break;
                
                case "copy":
                {
-                  try { CopyOperation(operation_param_array); } catch {}
+                  try { CopyOperation(operation_params); } catch {}
                }
                break;
                
                case "call":
                {
-                  try { CallOperation(operation_param_array); } catch {}
+                  try { CallOperation(operation_params); } catch {}
                }
                break;
                
                case "print":
                {
                   string to_print = "";
-                  foreach(string args; operation_param_array)
+                  foreach(string args; operation_params)
                   {
                      to_print = to_print ~ args;
                   }
@@ -409,7 +451,10 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                }
                break;
                
-               default: assert(0);
+               default:
+               {
+                  writeln("Unknown Operation: ", operation_token);
+               }
             }
          }
          else if(operation_json.type() == JSON_TYPE.STRING)
@@ -433,7 +478,16 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                }
                break;
                
-               default: assert(0);
+               case "clean":
+               {
+                  try { CleanOperation(routine, build_info, version_info); } catch {}
+               }
+               break;
+               
+               default:
+               {
+                  writeln("Unknown Operation: ", operation_token);
+               }
             }
          }
       }
@@ -445,63 +499,98 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
    }
 }
 
-void ExecutePerOperations(string[] operation_tokens, BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
+void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
 {
-   string last_operation_token = "";
+   JSONValue routine_json = GetRoutineJSON(routine);
+   string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
    
-   foreach(string current_operation_token; operation_tokens)
+   if(routine_json["per-operations"].type() == JSON_TYPE.ARRAY)
    {
-      string operation_token = current_operation_token;
-      if((operation_token ==  "=") || (operation_token ==  "||"))
-      {
-         operation_token = last_operation_token;
-      }
-      else
-      {
-         last_operation_token = operation_token;
-      }
+      JSONValue operations_json = routine_json["per-operations"];
+      string last_operation_token = "";
       
-      string[] operation_param_array = null;
-      Array!string operation_param_list = Array!string();
+      writeln("Executing Per Build Commands:");
       
-      switch(operation_token)
+      foreach(JSONValue operation_json; operations_json.array)
       {
-         case "move":
+         if(operation_json.type() == JSON_TYPE.ARRAY)
          {
-            writeln("PerMove");
-         }
-         break;
-         
-         case "delete":
-         {
-            writeln("PerDelete");
-         }
-         break;
-         
-         case "copy":
-         {
-            writeln("PerCopy");
-         }
-         break;
-         
-         case "call":
-         {
-            writeln("PerCall");
-         }
-         break;
-         
-         case "print":
-         {
-            string to_print = "";
-            foreach(string args; operation_param_array)
+            string operation_token = operation_json[0].str();
+            if((operation_token !=  "=") && (operation_token !=  "||"))
             {
-               to_print = to_print ~ args;
+               last_operation_token = operation_token;
             }
-            writeln("[print] ", to_print);
+            else
+            {
+               operation_token = last_operation_token;
+            }
+            
+            string[] operation_params = new string[operation_json.array.length - 1];
+            for(int i = 1; i < operation_json.array.length; ++i)
+            {
+               if(operation_json[i].type() == JSON_TYPE.STRING)
+               {
+                  operation_params[i - 1] = operation_json[i].str()
+                                            .replace("[OUTPUT_DIRECTORY]", output_directory)
+                                            .replace("[ARCH_NAME]", build_info.platform.arch)
+                                            .replace("[OS_NAME]", build_info.platform.OS)
+                                            .replace("[PROJECT_NAME]", build_info.project_name);
+                                            
+                  if(version_info.is_versioned)
+                  {
+                     operation_params[i - 1] = operation_params[i - 1]
+                                                   .replace("[MAJOR_VERSION]", to!string(version_info.major))
+                                                   .replace("[MINOR_VERSION]", to!string(version_info.minor))
+                                                   .replace("[PATCH_VERSION]", to!string(version_info.patch))
+                                                   .replace("[APPENDED_VERSION]", version_info.appended)
+                                                   .replace("[VERSION]", version_string);
+                  }
+               }
+            }
+            
+            switch(operation_token)
+            {
+               case "move":
+               {
+                  try { MoveOperation(operation_params); } catch {}
+               }
+               break;
+               
+               case "delete":
+               {
+                  try { DeleteOperation(operation_params); } catch {}
+               }
+               break;
+               
+               case "copy":
+               {
+                  try { CopyOperation(operation_params); } catch {}
+               }
+               break;
+               
+               case "call":
+               {
+                  try { CallOperation(operation_params); } catch {}
+               }
+               break;
+               
+               case "print":
+               {
+                  string to_print = "";
+                  foreach(string args; operation_params)
+                  {
+                     to_print = to_print ~ args;
+                  }
+                  writeln("[print] ", to_print);
+               }
+               break;
+               
+               default:
+               {
+                  writeln("Unknown Operation: ", operation_token);
+               }
+            }
          }
-         break;
-         
-         default: assert(0);
       }
    }
 }
@@ -520,7 +609,7 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
       
       JSONValue routine_json = GetRoutineJSON(routine);
       string[] arch_names = GetArchitectureNames(GlobalConfigFilePath);
-      //reload versions or allow UpdateVersions to update version info
+      //TODO: reload versions or allow UpdateVersions to update version info
       
       foreach(string arch_name; arch_names)
       {
@@ -530,7 +619,10 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
          
          foreach(string static_library; build_info.static_libraries)
          {
-            static_libraries = static_libraries ~ " " ~ RemoveTags(static_library, build_info.platform);
+            if(IsProperPlatform(static_library, build_info.platform))
+            {
+               static_libraries = static_libraries ~ " " ~ RemoveTags(static_library, build_info.platform);
+            }
          }
          
          if(exists(output_folder))
@@ -540,46 +632,25 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
             
          Build(output_folder, static_libraries, build_info, version_info);
          
-         try { CopyPerOperation(routine_json, output_folder); } catch {}
-         try { DeletePerOperation(routine_json, output_folder); } catch {}
-         try { MovePerOperation(routine_json, output_folder); } catch {}
-         //try { CallPerOperation(routine_json, output_folder); } catch {}
+         try { ExecutePerOperations(output_folder, routine, build_info, version_info); } catch {}
       }
    }
 }
 
-void CopyPerOperation(JSONValue routine_json, string output_directory)
+void CleanOperation(BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
 {
-   if(routine_json["per"].type() == JSON_TYPE.OBJECT)
+   if(build_info.can_build)
    {
-      JSONValue per_operations_json = routine_json["per"];
+      string[] arch_names = GetArchitectureNames(GlobalConfigFilePath);
       
-      if(per_operations_json["copy"].type() == JSON_TYPE.ARRAY)
+      foreach(string arch_name; arch_names)
       {
-         writeln("Executing copies:");
+         build_info.platform.arch = arch_name;
+         string output_folder = (build_info.build_folder.endsWith("/") ? build_info.build_folder[0 .. build_info.build_folder.lastIndexOf("/")] : build_info.build_folder) ~ "/" ~ build_info.platform.OS ~ "_" ~ build_info.platform.arch;
          
-         foreach(JSONValue value; per_operations_json["copy"].array)
+         if(exists(output_folder))
          {
-            if(value.type() == JSON_TYPE.ARRAY)
-            {
-               if(value.array.length == 2)
-               {
-                  string copy_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-                  string copy_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-               
-                  writeln("\t", copy_source, " -> ", copy_dest);
-                  CopyFile(copy_source, copy_dest);
-               }
-               
-               if(value.array.length == 3)
-               {
-                  string copy_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-                  string copy_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-               
-                  writeln("\t", copy_source, " (", value[2].str(), ") -> ", copy_dest);
-                  CopyFolder(copy_source, copy_dest, value[2].str());
-               }
-            }
+            rmdirRecurse(output_folder);
          }
       }
    }
@@ -599,40 +670,6 @@ void CopyOperation(string[] params)
    }
 }
 
-void DeletePerOperation(JSONValue routine_json, string output_directory)
-{
-   if(routine_json["per"].type() == JSON_TYPE.OBJECT)
-   {
-      JSONValue per_operations_json = routine_json["per"];
-   
-      if(per_operations_json["delete"].type() == JSON_TYPE.ARRAY)
-      {
-         writeln("Executing deletes:");
-         
-         foreach(JSONValue value; per_operations_json["delete"].array)
-         {
-            if(value.type() == JSON_TYPE.ARRAY)
-            {
-               string to_delete = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-            
-               if(value.array.length == 2)
-               {
-                  writeln("\t", to_delete, " (", value[1].str(), ") -> /dev/null");
-                  DeleteFolder(to_delete, value[1].str());
-               }
-            }
-            else if(value.type() == JSON_TYPE.STRING)
-            {
-               string to_delete = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-            
-               writeln("\t", to_delete, " -> /dev/null");
-               DeleteFile(to_delete);
-            }
-         }
-      }
-   }
-}
-
 void DeleteOperation(string[] params)
 {
    if(params.length == 2)
@@ -644,45 +681,6 @@ void DeleteOperation(string[] params)
    {
       writeln("\tDelete ", params[0], " -> /dev/null");
       DeleteFile(params[0]);
-   }
-}
-
-void MovePerOperation(JSONValue routine_json, string output_directory)
-{
-   if(routine_json["per"].type() == JSON_TYPE.OBJECT)
-   {
-      JSONValue per_operations_json = routine_json["per"];
-      
-      if(per_operations_json["move"].type() == JSON_TYPE.ARRAY)
-      {
-         writeln("Executing moves:");
-         
-         foreach(JSONValue value; per_operations_json["move"].array)
-         {
-            if(value.type() == JSON_TYPE.ARRAY)
-            {
-               if(value.array.length == 2)
-               {
-                  string move_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-                  string move_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-               
-                  writeln("\t", move_source, " -> ", move_dest);
-                  CopyFile(move_source, move_dest);
-                  DeleteFile(move_source);
-               }
-               
-               if(value.array.length == 3)
-               {
-                  string move_source = value[0].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-                  string move_dest = value[1].str().replace("[OUTPUT_DIRECTORY]", output_directory);
-               
-                  writeln("\t", move_source, " (", value[2].str(), ") -> ", move_dest);
-                  CopyFolder(move_source, move_dest, value[2].str());
-                  DeleteFolder(move_source, value[2].str());
-               }
-            }
-         }
-      }
    }
 }
 
@@ -780,8 +778,8 @@ void UpdateVersions(BuildRoutine routine, VersionType type)
       }
    }
    
-   //writeln(routine.path ~ ":\n" ~ file_json.toString() ~ "\n");
-   //TODO: write to json file (make it look nice, add newlines)
+   //TODO: writeln(routine.path ~ ":\n" ~ file_json.toPrettyString() ~ "\n");
+   //TODO: enable this std.file.write(routine.path ~ ".new", file_json.toPrettyString());
 }
 
 JSONValue GetRoutineJSON(BuildRoutine routine)
@@ -1081,7 +1079,6 @@ void Build(string output_folder, string static_libraries, BuildInformation build
       }
    }
    
-   //writeln(command_batch);
    system(toStringz(command_batch));
    
    CopyFile(temp_dir ~ "/" ~ build_info.project_name ~ file_ending, output_folder ~ "/" ~ output_file_name ~ file_ending);

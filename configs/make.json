@@ -13,18 +13,19 @@
          "build",
          ["print", "just built!"]
       ],
-      "per":
-      {
-         "copy":
-         [
-            ["./dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
-            ["./", "[OUTPUT_DIRECTORY]/jsons/", ".json"]
-         ]
-      },
+      "per-operations":
+      [
+         ["copy", "./dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
+         ["||", "./", "[OUTPUT_DIRECTORY]/jsons/", ".json"]
+      ],
       "type": "executable",
       "build" : "./test/",
       "source": "./",
-      "dependencies": "[OS: Windows] User32.lib",
+      "dependencies": 
+      [
+         "[OS: Windows] User32.lib",
+         "[OS: Fake_Linux] SomeLib.so"
+      ],
       "optimized": false,
       "project": "Test",
       "version": [0, 0, 0, "test"]

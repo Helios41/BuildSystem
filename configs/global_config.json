@@ -18,6 +18,10 @@
                "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
                "[OPT] cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [ATTRIB: dependencies]",
                "[NOPT] cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [ATTRIB: dependencies]"
+            ],
+            "optional":
+            [
+               "dependencies"
             ]
          },
          "dynamic": 
@@ -36,6 +40,10 @@
                "[OPT] cl /O2 /c*.c",
                "[NOPT] cl /Od /c *.c",
                "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj *.lib [ATTRIB: dependencies]"
+            ],
+            "optional":
+            [
+               "dependencies"
             ]
          },
          "static": 

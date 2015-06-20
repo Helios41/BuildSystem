@@ -5,10 +5,10 @@
       "language": "C",
       "operations":
       [
-         ["copy", "./dub.json", "./bob.json"],
-         ["||", "./", "./test/", ".random"],
-         ["delete", "./toremove.txt"],
-         ["||", "./bob.json"],
+         ["copy", "../dub.json", "../bob.json"],
+         ["||", "../", "../test/", ".random"],
+         ["delete", "../toremove.txt"],
+         ["||", "../bob.json"],
          ["print", "before building!"],
          "build",
          ["print", "just built!"],
@@ -18,12 +18,16 @@
       ],
       "per-operations":
       [
-         ["copy", "./dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
-         ["||", "./", "[OUTPUT_DIRECTORY]/jsons/", ".json"]
+         ["copy", "../dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
+         ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json"]
       ],
       "type": "executable",
-      "build" : "./test/",
-      "source": "./",
+      "build" : "../test/",
+      "source": 
+      [
+         "../helloworld.c",
+         ["../", ".h"]
+      ],
       "attributes": 
       [
          "dependencies"

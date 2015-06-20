@@ -10,14 +10,6 @@ import std.uuid;
 import std.conv;
 import std.container;
 
-/**
-TODO:
-   -finish dll building, currently doesn't export functions properly
-   -make some attributes optional (e.g. dependencies)
-   -make all paths relative to the current script
-   -why is it printing weird stuff when it does a cmd for loop?
-*/
-
 enum VersionType : string
 {
    None = "None",
@@ -196,7 +188,7 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       
       routine_info.path = file_path;
       routine_info.name = routine_name;
-      routine_info.directory = file_path[0 .. file_path.lastIndexOf("/")];
+      routine_info.directory = file_path[0 .. file_path.lastIndexOf("/") + 1];
       
       try
       {
@@ -362,7 +354,7 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
          }
       } catch { writeln("Attribute system broke!"); }
       
-      try { ExecuteOperations(routine_info, build_info, version_info); } catch {}
+      ExecuteOperations(routine_info, build_info, version_info);
    }
 }
 
@@ -423,25 +415,25 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
             {
                case "move":
                {
-                  try { MoveOperation(operation_params); } catch {}
+                  try { MoveOperation(routine, operation_params); } catch {}
                }
                break;
                
                case "delete":
                {
-                  try { DeleteOperation(operation_params); } catch {}
+                  try { DeleteOperation(routine, operation_params); } catch {}
                }
                break;
                
                case "copy":
                {
-                  try { CopyOperation(operation_params); } catch {}
+                  try { CopyOperation(routine, operation_params); } catch {}
                }
                break;
                
                case "call":
                {
-                  try { CallOperation(operation_params); } catch {}
+                  try { CallOperation(routine, operation_params); } catch {}
                }
                break;
                
@@ -478,7 +470,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
             {
                case "build":
                {
-                  try { BuildOperation(routine, build_info, version_info); } catch { writeln("Build failure..."); }
+                  BuildOperation(routine, build_info, version_info);
                   has_built = true;
                }
                break;
@@ -509,7 +501,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
    JSONValue routine_json = GetRoutineJSON(routine);
    string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
    
-   if(!HasJSON(routine_json,  "per-operations"))
+   if(!HasJSON(routine_json, "per-operations"))
       return;
    
    if(routine_json["per-operations"].type() == JSON_TYPE.ARRAY)
@@ -572,25 +564,25 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
             {
                case "move":
                {
-                  try { MoveOperation(operation_params); } catch {}
+                  try { MoveOperation(routine, operation_params); } catch {}
                }
                break;
                
                case "delete":
                {
-                  try { DeleteOperation(operation_params); } catch {}
+                  try { DeleteOperation(routine, operation_params); } catch {}
                }
                break;
                
                case "copy":
                {
-                  try { CopyOperation(operation_params); } catch {}
+                  try { CopyOperation(routine, operation_params); } catch {}
                }
                break;
                
                case "call":
                {
-                  try { CallOperation(operation_params); } catch {}
+                  try { CallOperation(routine, operation_params); } catch {}
                }
                break;
                
@@ -641,7 +633,7 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
             rmdirRecurse(output_folder);
          }
             
-         Build(output_folder, build_info, version_info);
+         Build(output_folder, routine, build_info, version_info);
          
          try { ExecutePerOperations(output_folder, routine, build_info, version_info); } catch {}
       }
@@ -667,51 +659,51 @@ void CleanOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
    }
 }
 
-void CopyOperation(string[] params)
+void CopyOperation(BuildRoutine routine_info, string[] params)
 {
    if(params.length == 2)
    {
-      writeln("\tCopy ", params[0], " -> ", params[1]);
-      CopyFile(params[0], params[1]);
+      writeln("\tCopy ", routine_info.directory ~ params[0], " -> ", routine_info.directory ~ params[1]);
+      CopyFile(routine_info.directory ~ params[0], routine_info.directory ~ params[1]);
    }
    else if(params.length == 3)
    {
-      writeln("\tCopy ", params[0], " (", params[2], ") -> ", params[1]);
-      CopyFolder(params[0], params[1], params[2]);
+      writeln("\tCopy ", routine_info.directory ~ params[0], " (", params[2], ") -> ", routine_info.directory ~ params[1]);
+      CopyFolder(routine_info.directory ~ params[0], routine_info.directory ~ params[1], params[2]);
    }
 }
 
-void DeleteOperation(string[] params)
+void DeleteOperation(BuildRoutine routine_info, string[] params)
 {
    if(params.length == 2)
    {
-      writeln("\tDelete ", params[0], " (", params[1], ") -> /dev/null");
-      DeleteFolder(params[0], params[1]);
+      writeln("\tDelete ", routine_info.directory ~ params[0], " (", params[1], ") -> /dev/null");
+      DeleteFolder(routine_info.directory ~ params[0], params[1]);
    }
    else if(params.length == 1)
    {
-      writeln("\tDelete ", params[0], " -> /dev/null");
-      DeleteFile(params[0]);
+      writeln("\tDelete ", routine_info.directory ~ params[0], " -> /dev/null");
+      DeleteFile(routine_info.directory ~ params[0]);
    }
 }
 
-void MoveOperation(string[] params)
+void MoveOperation(BuildRoutine routine_info, string[] params)
 {
    if(params.length == 2)
    {
-      writeln("\tMove ", params[0], " -> ", params[1]);
-      CopyFile(params[0], params[1]);
-      DeleteFile(params[0]);
+      writeln("\tMove ", routine_info.directory ~ params[0], " -> ", routine_info.directory ~ params[1]);
+      CopyFile(routine_info.directory ~ params[0], routine_info.directory ~ params[1]);
+      DeleteFile(routine_info.directory ~ params[0]);
    }
    else if(params.length == 3)
    {
-      writeln("\tMove ", params[0], " (", params[2], ") -> ", params[1]);
-      CopyFolder(params[0], params[1], params[2]);
-      DeleteFolder(params[0], params[1]);
+      writeln("\tMove ", routine_info.directory ~ params[0], " (", params[2], ") -> ", routine_info.directory ~ params[1]);
+      CopyFolder(routine_info.directory ~ params[0], routine_info.directory ~ params[1], params[2]);
+      DeleteFolder(routine_info.directory ~ params[0], routine_info.directory ~ params[1]);
    }
 }
 
-void CallOperation(string[] params)
+void CallOperation(BuildRoutine routine_info, string[] params)
 {
    writeln("Executing calls:");
    
@@ -740,18 +732,18 @@ void CallOperation(string[] params)
          else
          {
             function_called = true;
-            RunRoutine(params[0], call_arg, version_type);
+            RunRoutine(routine_info.directory ~ params[0], call_arg, version_type);
          }
       }
    
       if(!function_called)
       {
-         RunRoutine(params[0], GetDefaultRoutine(params[0]), version_type);
+         RunRoutine(routine_info.directory ~ params[0], GetDefaultRoutine(routine_info.directory ~ params[0]), version_type);
       }
    }
    else if(params.length == 1)
    {
-      RunRoutine(params[0], GetDefaultRoutine(params[0]));
+      RunRoutine(routine_info.directory ~ params[0], GetDefaultRoutine(routine_info.directory ~ params[0]));
    }
 }
 
@@ -869,6 +861,38 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
             {
                if(command_json.type() == JSON_TYPE.STRING)
                   output[index++] = command_json.str();
+            }
+         }
+      }
+   }
+
+   return output;
+}
+
+string[] GetLanguageOptionalAttribs(string file_path, string language_name, string build_type)
+{
+   //writeln("Loading optional attributes for ", language_name, "(", build_type, ") from ", file_path);
+   
+   JSONValue language_json = GetLanguageJSON(file_path, language_name);
+   string[] output = null;
+   
+   if(HasJSON(language_json, build_type))
+   {
+      JSONValue build_type_json = language_json[build_type];
+      
+      if(HasJSON(build_type_json, "optional"))
+      {
+         JSONValue optional_attribs_json = build_type_json["optional"];
+         
+         if(optional_attribs_json.type() == JSON_TYPE.ARRAY)
+         {
+            output = new string[optional_attribs_json.array.length];
+            int index = 0;
+            
+            foreach(JSONValue attrib_json; optional_attribs_json.array)
+            {
+               if(attrib_json.type() == JSON_TYPE.STRING)
+                  output[index++] = attrib_json.str();
             }
          }
       }
@@ -1017,6 +1041,11 @@ string ProcessTags(string tag, BuildInformation build_info)
       new_tag = new_tag.replace("[ATTRIB: " ~ attrib_name ~ "]", attrib_string);
    }
    
+   foreach(string optional_attrib_name; GetLanguageOptionalAttribs(GlobalConfigFilePath, build_info.language, build_info.type))
+   {
+      new_tag = new_tag.replace("[ATTRIB: " ~ optional_attrib_name ~ "]", ""); 
+   }
+   
    return new_tag;
 }
 
@@ -1037,8 +1066,9 @@ bool AreTagsValid(string tag, BuildInformation build_info, bool extra_informatio
             string attrib_name = copy_tag[0 .. copy_tag.indexOf("]")];
             copy_tag = copy_tag[copy_tag.indexOf("]") + 1 .. $];
             
+            bool is_optional = GetLanguageOptionalAttribs(GlobalConfigFilePath, build_info.language, build_info.type).canFind(attrib_name);
             auto is_available = (attrib_name in build_info.attributes);
-            if(!is_available)
+            if(!is_available && !is_optional)
             {
                if(extra_information)
                {
@@ -1143,9 +1173,9 @@ void DeleteFolder(string path, string ending = "")
    } catch {}
 }
 
-void Build(string output_folder, BuildInformation build_info, VersionInformation version_info)
+void Build(string output_folder, BuildRoutine routine_info, BuildInformation build_info, VersionInformation version_info)
 {
-   string temp_dir = "./" ~ randomUUID().toString();
+   string temp_dir = routine_info.directory ~ build_info.project_name ~ "_" ~ routine_info.name ~ "_" ~ randomUUID().toString();
    string[] commands = GetLanguageCommands(GlobalConfigFilePath, build_info.language, build_info.type);
    string file_ending = GetLanguageFileEnding(GlobalConfigFilePath, build_info.language, build_info.type);
    string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
@@ -1153,15 +1183,16 @@ void Build(string output_folder, BuildInformation build_info, VersionInformation
    
    mkdir(temp_dir);
    
-   if(!exists(output_folder))
+   if(!exists(routine_info.directory ~ output_folder))
    {
-      mkdir(output_folder);
+      mkdir(routine_info.directory ~ output_folder);
    }
    
    foreach(SourceDescription source; build_info.source_folders)
    {
-      CopyFile(source.path, temp_dir ~ "/" ~ source.path);
-      CopyFolder(source.path, temp_dir ~ "/", source.ending);
+      writeln(temp_dir ~ "/" ~ source.path);
+      CopyFile(routine_info.directory ~ source.path, temp_dir ~ "/" ~ source.path);
+      CopyFolder(routine_info.directory ~ source.path, temp_dir ~ "/", source.ending);
    }
 
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
@@ -1176,7 +1207,9 @@ void Build(string output_folder, BuildInformation build_info, VersionInformation
                           .replace("[PROJECT_NAME]", build_info.project_name)
                           .replace("[BUILD_DIRECTORY]", temp_dir)
                           .replace("[OUTPUT_FILE]", output_file_name);
-         
+     
+         //writeln(command);
+     
          if(command_batch == "")
          {
             command_batch = command_batch ~ " ( " ~ command ~ " )";

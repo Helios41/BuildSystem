@@ -4,14 +4,13 @@
    {
       "language": "C",
       "type": "dynamic",
-      "build" : "./dltest",
+      "build" : "../dltest",
       "source": 
       [
-         "./DLibrary.c",
-         ["./", ".h"]
+         "../DLibrary.c",
+         ["../", ".h"]
       ],
-      "attributes": ["dependencies", "exports"],
-      "dependencies": "",
+      "attributes": ["exports"],
       "exports": 
       [
          "add_integers_foo"

@@ -812,10 +812,8 @@ JSONValue GetRoutineJSON(BuildRoutine routine)
    return JSONValue.init;
 }
 
-string[] GetLanguageCommands(string file_path, string language_name, string build_type)
+JSONValue GetLanguageJSON(string file_path, string language_name)
 {
-   writeln("Loading language ", language_name, " commands (", build_type, ") from ", file_path);
-
    if(!isFile(file_path))
    {
       writeln(file_path ~ " not found!");
@@ -823,41 +821,57 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
    }
    
    JSONValue file_json = parseJSON(readText(file_path));
+   
+   if(HasJSON(file_json, "languages"))
+   {
+      JSONValue languages_json = file_json["languages"];
+      if(HasJSON(languages_json, language_name))
+      {
+         JSONValue language_json = languages_json[language_name];
+         return language_json;
+      }
+      else
+      {
+         writeln("Language config missing  for language \"", language_name, "\"");
+         exit(-1);
+      }
+   }
+   else
+   {
+      writeln("Language config missing \"language\" segment");
+      exit(-1);
+   }
+   
+   return JSONValue.init; 
+}
+
+string[] GetLanguageCommands(string file_path, string language_name, string build_type)
+{
+   writeln("Loading language ", language_name, " commands (", build_type, ") from ", file_path);
+   
+   JSONValue language_json = GetLanguageJSON(file_path, language_name);
    string[] output = null;
    
-   try
+   if(HasJSON(language_json, build_type))
    {
-      if(file_json[language_name].type() == JSON_TYPE.OBJECT)
+      JSONValue build_type_json = language_json[build_type];
+      
+      if(HasJSON(build_type_json, "commands"))
       {
-         JSONValue language_json = file_json[language_name];
+         JSONValue commands_json = build_type_json["commands"];
          
-         if(language_json[build_type].type() == JSON_TYPE.OBJECT)
+         if(commands_json.type() == JSON_TYPE.ARRAY)
          {
-            JSONValue build_type_json = language_json[build_type];
+            output = new string[commands_json.array.length];
+            int index = 0;
             
-            if(build_type_json["commands"].type() == JSON_TYPE.ARRAY)
+            foreach(JSONValue command_json; commands_json.array)
             {
-               JSONValue commands_json = build_type_json["commands"];
-               
-               output = new string[commands_json.array.length];
-               int index = 0;
-            
-               foreach(JSONValue value; commands_json.array)
-               {
-                  if(value.type() == JSON_TYPE.STRING)
-                  {
-                     output[index] = value.str();
-                     ++index;
-                  }
-               }
+               if(command_json.type() == JSON_TYPE.STRING)
+                  output[index++] = command_json.str();
             }
          }
       }
-   }
-   catch
-   {
-      writeln("Language config missing JSON element(s)!");
-      exit(-1);
    }
 
    return output;
@@ -866,36 +880,22 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
 string GetLanguageFileEnding(string file_path, string language_name, string build_type)
 {
    writeln("Loading language ", language_name, " ending (", build_type, ") from ", file_path);
-
-   if(!isFile(file_path))
-   {
-      writeln(file_path ~ " not found!");
-      exit(-1);
-   }
    
-   JSONValue file_json = parseJSON(readText(file_path));
+   JSONValue language_json = GetLanguageJSON(file_path, language_name);
    
-   try
+   if(HasJSON(language_json, build_type))
    {
-      if(file_json[language_name].type() == JSON_TYPE.OBJECT)
+      JSONValue build_type_json = language_json[build_type];
+      
+      if(HasJSON(build_type_json, "ending"))
       {
-         JSONValue language_json = file_json[language_name];
+         JSONValue ending_json = build_type_json["ending"];
          
-         if(language_json[build_type].type() == JSON_TYPE.OBJECT)
+         if(ending_json.type() == JSON_TYPE.STRING)
          {
-            JSONValue build_type_json = language_json[build_type];
-            
-            if(build_type_json["ending"].type() == JSON_TYPE.STRING)
-            {
-               return build_type_json["ending"].str();
-            }
+            return ending_json.str();
          }
       }
-   }
-   catch
-   {
-      writeln("Language config missing JSON element(s)!");
-      exit(-1);
    }
 
    return null;
@@ -1068,6 +1068,10 @@ bool HasJSON(JSONValue json, string ID)
 {
    try
    {
+      if(json.type() != JSON_TYPE.OBJECT)
+      {
+         return false;
+      }
       json[ID];
       return true;
    }
@@ -1173,8 +1177,6 @@ void Build(string output_folder, BuildInformation build_info, VersionInformation
                           .replace("[BUILD_DIRECTORY]", temp_dir)
                           .replace("[OUTPUT_FILE]", output_file_name);
          
-         //writeln(command);
-         
          if(command_batch == "")
          {
             command_batch = command_batch ~ " ( " ~ command ~ " )";
@@ -1183,10 +1185,6 @@ void Build(string output_folder, BuildInformation build_info, VersionInformation
          {
             command_batch = command_batch ~ " && ( " ~ command ~ " )";
          }
-      }
-      else
-      {
-         //writeln("Invalid Tag: ", command_template);
       }
    }
    

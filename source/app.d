@@ -12,10 +12,10 @@ import std.container;
 
 /**
 TODO:
-   -build dll on windows with .def file
-   -ability to specify functions to expose as dll
-   -attribute system to replace static libraries & exported functions *MOAR DYNAMICALITY*
+   -finish dll building, currently doesn't export functions properly
+   -make some attributes optional (e.g. dependencies)
    -make all paths relative to the current script
+   -why is it printing weird stuff when it does a cmd for loop?
 */
 
 enum VersionType : string
@@ -45,19 +45,22 @@ struct PlatformInformation
    string OS;
 }
 
+struct SourceDescription
+{
+   string path;
+   string ending = "";
+}
+
 struct BuildInformation
 {
    PlatformInformation platform;
    bool can_build;
    string type;
    string language;
-   string[] source_folders;
+   SourceDescription[] source_folders;
    string build_folder;
    string project_name;
    string[][string] attributes;
-   
-   string[] static_libraries;
-   string[] exported_functions;
 }
 
 struct BuildRoutine
@@ -180,10 +183,6 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       build_info.platform.arch = "";
       build_info.platform.OS = GetOSName();
       
-      //TODO: remove in favour of attrib system
-      build_info.static_libraries = null;
-      build_info.exported_functions = null;
-      
       VersionInformation version_info;
       
       version_info.type = version_type;
@@ -230,20 +229,32 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       {
          if(routine_json["source"].type() == JSON_TYPE.STRING)
          {
-            build_info.source_folders = new string[1];
-            build_info.source_folders[0] = routine_json["source"].str();
+            build_info.source_folders = new SourceDescription[1];
+            build_info.source_folders[0].path = routine_json["source"].str();
          }
          else if(routine_json["source"].type() == JSON_TYPE.ARRAY)
          {
-            build_info.source_folders = new string[routine_json["source"].array.length];
+            build_info.source_folders = new SourceDescription[routine_json["source"].array.length];
             int index = 0;
          
             foreach(JSONValue value; routine_json["source"].array)
             {
                if(value.type() == JSON_TYPE.STRING)
                {
-                  build_info.source_folders[index] = value.str();
+                  build_info.source_folders[index].path = value.str();
                   ++index;
+               }
+               else if(value.type() == JSON_TYPE.ARRAY)
+               {
+                  if(value.array.length == 2)
+                  {
+                     if((value[0].type() == JSON_TYPE.STRING) && (value[1].type() == JSON_TYPE.STRING))
+                     {
+                        build_info.source_folders[index].path = value[0].str();
+                        build_info.source_folders[index].ending = value[1].str();
+                        ++index;
+                     }
+                  }
                }
             }
          }
@@ -313,66 +324,43 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       
       try
       {
-         //TODO: attrib system
-         foreach(JSONValue attribute_json; routine_json.array)
+         if(HasJSON(routine_json, "attributes"))
          {
-            writeln(routine_json.array.length);
-         }
-      } catch { writeln("Attrib system broke!"); }
-      
-      //PORT TO ATTRIB SYSTEM - BEGIN
-      
-      try
-      {
-         if(routine_json["dependencies"].type() == JSON_TYPE.STRING)
-         {
-            build_info.static_libraries = new string[1];
-            build_info.static_libraries[0] = routine_json["dependencies"].str();
-         }
-         else if(routine_json["dependencies"].type() == JSON_TYPE.ARRAY)
-         {
-            JSONValue dependencies_json = routine_json["dependencies"];
-            build_info.static_libraries = new string[dependencies_json.array.length];
-            int index = 0;
-            
-            foreach(JSONValue element_json; dependencies_json.array)
+            if(routine_json["attributes"].type() == JSON_TYPE.ARRAY)
             {
-               if(element_json.type() == JSON_TYPE.STRING)
+               JSONValue attributes_json = routine_json["attributes"];
+               
+               foreach(JSONValue attribute_json; attributes_json.array)
                {
-                  build_info.static_libraries[index] = element_json.str();
-                  ++index;
+                  if(attribute_json.type() == JSON_TYPE.STRING)
+                  {
+                     string attribute_name = attribute_json.str();
+                     
+                     if(routine_json[attribute_name].type() == JSON_TYPE.STRING)
+                     {
+                        build_info.attributes[attribute_name] = new string[1];
+                        build_info.attributes[attribute_name][0] = routine_json[attribute_name].str();
+                     }
+                     else if(routine_json[attribute_name].type() == JSON_TYPE.ARRAY)
+                     {
+                        JSONValue attribute_content_json = routine_json[attribute_name];
+                        build_info.attributes[attribute_name] = new string[attribute_content_json.array.length];
+                        int index = 0;
+                        
+                        foreach(JSONValue element_json; attribute_content_json.array)
+                        {
+                           if(element_json.type() == JSON_TYPE.STRING)
+                           {
+                              build_info.attributes[attribute_name][index] = element_json.str();
+                              ++index;
+                           }
+                        }
+                     }
+                  }
                }
             }
          }
-      }
-      catch {}
-      
-      try
-      {
-         if(routine_json["exports"].type() == JSON_TYPE.STRING)
-         {
-            build_info.exported_functions = new string[1];
-            build_info.exported_functions[0] = routine_json["exports"].str();
-         }
-         else if(routine_json["exports"].type() == JSON_TYPE.ARRAY)
-         {
-            JSONValue dependencies_json = routine_json["exports"];
-            build_info.static_libraries = new string[dependencies_json.array.length];
-            int index = 0;
-            
-            foreach(JSONValue element_json; dependencies_json.array)
-            {
-               if(element_json.type() == JSON_TYPE.STRING)
-               {
-                  build_info.static_libraries[index] = element_json.str();
-                  ++index;
-               }
-            }
-         }
-      }
-      catch {}
-      
-      //PORT TO ATTRIB SYSTEM - END
+      } catch { writeln("Attribute system broke!"); }
       
       try { ExecuteOperations(routine_info, build_info, version_info); } catch {}
    }
@@ -382,6 +370,12 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
 {
    JSONValue routine_json = GetRoutineJSON(routine);
 
+   if(!HasJSON(routine_json, "operations"))
+   {
+      try { BuildOperation(routine, build_info, version_info); } catch {}
+      return;
+   }
+   
    if(routine_json["operations"].type() == JSON_TYPE.ARRAY)
    {
       JSONValue operations_json = routine_json["operations"];
@@ -484,7 +478,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
             {
                case "build":
                {
-                  try { BuildOperation(routine, build_info, version_info); } catch {}
+                  try { BuildOperation(routine, build_info, version_info); } catch { writeln("Build failure..."); }
                   has_built = true;
                }
                break;
@@ -514,6 +508,9 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
 {
    JSONValue routine_json = GetRoutineJSON(routine);
    string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
+   
+   if(!HasJSON(routine_json,  "per-operations"))
+      return;
    
    if(routine_json["per-operations"].type() == JSON_TYPE.ARRAY)
    {
@@ -638,22 +635,13 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
       {
          build_info.platform.arch = arch_name;
          string output_folder = (build_info.build_folder.endsWith("/") ? build_info.build_folder[0 .. build_info.build_folder.lastIndexOf("/")] : build_info.build_folder) ~ "/" ~ build_info.platform.OS ~ "_" ~ build_info.platform.arch;
-         string static_libraries = "";
-         
-         foreach(string static_library; build_info.static_libraries)
-         {
-            if(IsProperPlatform(static_library, build_info.platform))
-            {
-               static_libraries = static_libraries ~ " " ~ RemoveTags(static_library, build_info.platform);
-            }
-         }
          
          if(exists(output_folder))
          {
             rmdirRecurse(output_folder);
          }
             
-         Build(output_folder, static_libraries, build_info, version_info);
+         Build(output_folder, build_info, version_info);
          
          try { ExecutePerOperations(output_folder, routine, build_info, version_info); } catch {}
       }
@@ -1010,6 +998,85 @@ string RemoveTags(string tag, PlatformInformation platform)
    return new_tag;
 }
 
+string ProcessTags(string tag, BuildInformation build_info)
+{
+   string new_tag = RemoveTags(tag, build_info.platform);
+   
+   foreach(string attrib_name, string[] attrib_array; build_info.attributes)
+   {
+      string attrib_string = "";
+   
+      foreach(string attrib_element; attrib_array)
+      {
+         if(IsProperPlatform(attrib_element, build_info.platform))
+         {
+            attrib_string = attrib_string ~ " " ~ RemoveTags(attrib_element, build_info.platform);
+         }
+      }
+      
+      new_tag = new_tag.replace("[ATTRIB: " ~ attrib_name ~ "]", attrib_string);
+   }
+   
+   return new_tag;
+}
+
+bool AreTagsValid(string tag, BuildInformation build_info, bool extra_information = true)
+{
+   bool tags_valid = true;
+   string copy_tag = RemoveTags(tag, build_info.platform);
+   
+   if(IsProperPlatform(tag, build_info.platform))
+   {
+      while(tags_valid)
+      {
+         int index_of = copy_tag.indexOf("[ATTRIB: ");
+         
+         if(index_of >= 0)
+         {
+            copy_tag = copy_tag[(index_of + "[ATTRIB: ".length) .. $];
+            string attrib_name = copy_tag[0 .. copy_tag.indexOf("]")];
+            copy_tag = copy_tag[copy_tag.indexOf("]") + 1 .. $];
+            
+            auto is_available = (attrib_name in build_info.attributes);
+            if(!is_available)
+            {
+               if(extra_information)
+               {
+                  writeln("------------------------------------------------------");
+                  writeln("Attribute \"", attrib_name, "\" not available! \nReferenced in tag\n\"", tag , "\"");
+                  writeln("------------------------------------------------------");
+               }
+               tags_valid = false;
+               break;
+            }
+         }
+         else
+         {
+            break;
+         }
+      }
+   }
+   else
+   {
+      tags_valid = false;
+   }
+   
+   return tags_valid;
+}
+
+bool HasJSON(JSONValue json, string ID)
+{
+   try
+   {
+      json[ID];
+      return true;
+   }
+   catch(JSONException exc)
+   {
+      return false;
+   }
+}
+
 void CopyFile(string source, string destination)
 {
    try
@@ -1072,13 +1139,13 @@ void DeleteFolder(string path, string ending = "")
    } catch {}
 }
 
-void Build(string output_folder, string static_libraries, BuildInformation build_info, VersionInformation version_info)
+void Build(string output_folder, BuildInformation build_info, VersionInformation version_info)
 {
    string temp_dir = "./" ~ randomUUID().toString();
    string[] commands = GetLanguageCommands(GlobalConfigFilePath, build_info.language, build_info.type);
    string file_ending = GetLanguageFileEnding(GlobalConfigFilePath, build_info.language, build_info.type);
    string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
-   string output_file_name = build_info.project_name ~ "_" ~ version_string;
+   string output_file_name = build_info.project_name ~ (version_info.is_versioned ? " " ~ version_string : "");
    
    mkdir(temp_dir);
    
@@ -1087,10 +1154,10 @@ void Build(string output_folder, string static_libraries, BuildInformation build
       mkdir(output_folder);
    }
    
-   foreach(string source; build_info.source_folders)
+   foreach(SourceDescription source; build_info.source_folders)
    {
-      CopyFile(source, temp_dir ~ "/" ~ source);
-      CopyFolder(source, temp_dir ~ "/");
+      CopyFile(source.path, temp_dir ~ "/" ~ source.path);
+      CopyFolder(source.path, temp_dir ~ "/", source.ending);
    }
 
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
@@ -1099,13 +1166,14 @@ void Build(string output_folder, string static_libraries, BuildInformation build
    
    foreach(string command_template; commands)
    {
-      if(IsProperPlatform(command_template, build_info.platform))
+      if(AreTagsValid(command_template, build_info))
       {
-         string command = RemoveTags(command_template, build_info.platform)
+         string command = ProcessTags(command_template, build_info)
                           .replace("[PROJECT_NAME]", build_info.project_name)
                           .replace("[BUILD_DIRECTORY]", temp_dir)
-                          .replace("[OUTPUT_FILE]", output_file_name)
-                          .replace("[STATIC_LIBRARIES]", static_libraries);
+                          .replace("[OUTPUT_FILE]", output_file_name);
+         
+         //writeln(command);
          
          if(command_batch == "")
          {
@@ -1115,6 +1183,10 @@ void Build(string output_folder, string static_libraries, BuildInformation build
          {
             command_batch = command_batch ~ " && ( " ~ command ~ " )";
          }
+      }
+      else
+      {
+         //writeln("Invalid Tag: ", command_template);
       }
    }
    

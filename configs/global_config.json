@@ -10,12 +10,12 @@
       {
          "ending": ".exe",
          "commands":
-         [
+         [  
+            "cd [BUILD_DIRECTORY]",
             "[ARCH: X86] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86",
             "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
-            "cd [BUILD_DIRECTORY]",
-            "[OPT] cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [STATIC_LIBRARIES]",
-            "[NOPT] cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [STATIC_LIBRARIES]"
+            "[OPT] cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [ATTRIB: dependencies]",
+            "[NOPT] cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [ATTRIB: dependencies]"
          ]
       },
       "dynamic": 
@@ -23,12 +23,14 @@
          "ending": ".dll",
          "commands":
          [
+            "cd [BUILD_DIRECTORY]",
             "[ARCH: X86] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86",
             "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
-            "cd [BUILD_DIRECTORY]",
-            "echo [EXPOSED_FUNCTIONS] >> expose.def",
-            "[OPT] cl /LD /O2 /Fe[PROJECT_NAME] *.c /link *.lib [STATIC_LIBRARIES]",
-            "[NOPT] cl /LD /Od /Fe[PROJECT_NAME] *.c /link *.lib [STATIC_LIBRARIES]"
+            "echo LIBRARY [PROJECT_NAME] > ./exports.def",
+            "echo EXPORTS >> ./exports.def",
+            "for /f %a in (\"[ATTRIB: exports]\") do ( echo \t %a >> ./exports.def )",
+            "[OPT] cl /LD /O2 /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [ATTRIB: dependencies]",
+            "[NOPT] cl /LD /Od /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [ATTRIB: dependencies]"
          ]
       },
       "static": 
@@ -36,9 +38,9 @@
          "ending": ".lib",
          "commands":
          [
+            "cd [BUILD_DIRECTORY]",
             "[ARCH: X86] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86",
             "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
-            "cd [BUILD_DIRECTORY]",
             "[OPT] cl /O2 /c *.c",
             "[NOPT] cl /Od /c *.c",
             "lib /out:[PROJECT_NAME].lib *.obj"

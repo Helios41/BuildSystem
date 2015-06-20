@@ -24,6 +24,10 @@
       "type": "executable",
       "build" : "./test/",
       "source": "./",
+      "attributes": 
+      [
+         "dependencies"
+      ],
       "dependencies": 
       [
          "[OS: Windows] User32.lib",

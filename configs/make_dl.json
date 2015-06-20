@@ -1,0 +1,22 @@
+{
+   "default": "Make",
+   "Make": 
+   {
+      "language": "C",
+      "type": "dynamic",
+      "build" : "./dltest",
+      "source": 
+      [
+         "./DLibrary.c",
+         ["./", ".h"]
+      ],
+      "attributes": ["dependencies", "exports"],
+      "dependencies": "",
+      "exports": 
+      [
+         "add_integers_foo"
+      ],
+      "optimized": false,
+      "project": "DLTest"
+   }
+}

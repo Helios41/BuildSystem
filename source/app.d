@@ -10,6 +10,12 @@ import std.uuid;
 import std.conv;
 import std.container;
 
+/**
+TODO:
+   -Clean up code
+   -Clean up relative paths
+*/
+
 enum VersionType : string
 {
    None = "None",
@@ -364,7 +370,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
 
    if(!HasJSON(routine_json, "operations"))
    {
-      try { BuildOperation(routine, build_info, version_info); } catch {}
+      BuildOperation(routine, build_info, version_info);
       return;
    }
    
@@ -1118,7 +1124,7 @@ void CopyFile(string source, string destination)
       string dest_directory = destination[0 .. destination.lastIndexOf("/")];
       if(!exists(dest_directory))
       {
-         mkdir(dest_directory);
+         mkdirRecurse(dest_directory);
       }
    
       if(isFile(source))
@@ -1181,17 +1187,17 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
    string output_file_name = build_info.project_name ~ (version_info.is_versioned ? " " ~ version_string : "");
    
-   mkdir(temp_dir);
+   mkdirRecurse(temp_dir);
    
    if(!exists(routine_info.directory ~ output_folder))
    {
-      mkdir(routine_info.directory ~ output_folder);
+      mkdirRecurse(routine_info.directory ~ output_folder);
    }
    
    foreach(SourceDescription source; build_info.source_folders)
    {
-      writeln(temp_dir ~ "/" ~ source.path);
-      CopyFile(routine_info.directory ~ source.path, temp_dir ~ "/" ~ source.path);
+      //writeln(temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+      CopyFile(routine_info.directory ~ source.path, temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
       CopyFolder(routine_info.directory ~ source.path, temp_dir ~ "/", source.ending);
    }
 
@@ -1223,7 +1229,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    
    system(toStringz(command_batch));
    
-   CopyFile(temp_dir ~ "/" ~ build_info.project_name ~ file_ending, output_folder ~ "/" ~ output_file_name ~ file_ending);
+   CopyFile(temp_dir ~ "/" ~ build_info.project_name ~ file_ending, routine_info.directory ~ output_folder ~ "/" ~ output_file_name ~ file_ending);
    
    rmdirRecurse(temp_dir);
 }

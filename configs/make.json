@@ -6,7 +6,7 @@
       "operations":
       [
          ["copy", "../dub.json", "../bob.json"],
-         ["||", "../", "../test/", ".random"],
+         ["||", "../", "../test/", ".random"],         
          ["delete", "../toremove.txt"],
          ["||", "../bob.json"],
          ["print", "before building!"],
@@ -19,7 +19,8 @@
       "per-operations":
       [
          ["copy", "../dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
-         ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json"]
+         ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json"],
+         ["||", "../dltest/Windows_X86/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"]
       ],
       "type": "executable",
       "build" : "../test/",

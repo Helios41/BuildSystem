@@ -11,6 +11,7 @@ int main()
   printf("Hello world\n");
   
   HINSTANCE DLibraryHandle = LoadLibrary("./DLTest.dll");
+  add_integers_foo_t add_integers_foo = NULL;
   
   if(DLibraryHandle == NULL)
   {
@@ -19,22 +20,22 @@ int main()
   else
   {
      printf("Library found!\n");
-  }
      
+     add_integers_foo = (add_integers_foo_t) GetProcAddress(DLibraryHandle, "add_integers_foo");
+  }
   
-  add_integers_foo_t add_integers_foo = (add_integers_foo_t) GetProcAddress(DLibraryHandle, "add_integers_foo");
   
   if(add_integers_foo == NULL)
   {
      printf("Function not found!\n");
+  }
+  else
+  {
+     printf("Function found!\n");\
      
      int i1 = 5;
      int i2 = 6;
      int i3 = add_integers_foo(i1, i2);
-  }
-  else
-  {
-     printf("Function found!\n");
   }
   
   return 0;

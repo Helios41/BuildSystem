@@ -5,21 +5,21 @@
       "operations":
       [
          ["print", "test"],
-         ["delete", "./toremove.txt"]
+         ["delete", "../toremove.txt"]
       ]
    },
    "Func1":
    {
       "operations":
       [
-         ["delete", "./test1.txt"]
+         ["delete", "../test1.txt"]
       ]
    },
    "Func2":
    {
       "operations":
       [
-         ["delete", "./test2.txt"]
+         ["delete", "../test2.txt"]
       ]
    }
 }

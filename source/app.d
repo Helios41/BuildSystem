@@ -12,7 +12,8 @@ import std.container;
 
 /**
 TODO:
-   -Clean up code
+   -Clean up code & comments
+   -Remove "./" from beginning of paths
    -Clean up relative paths
 */
 
@@ -165,6 +166,9 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
    
    JSONValue file_json = parseJSON(readText(file_path));
    
+   if(!HasJSON(file_json, routine_name))
+      return;
+   
    if(file_json[routine_name].type() == JSON_TYPE.OBJECT)
    {
       JSONValue routine_json = file_json[routine_name];
@@ -196,23 +200,29 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       routine_info.name = routine_name;
       routine_info.directory = file_path[0 .. file_path.lastIndexOf("/") + 1];
       
-      try
+      if(HasJSON(routine_json, "project"))
       {
          if(routine_json["project"].type() == JSON_TYPE.STRING)
          {
             build_info.project_name = routine_json["project"].str();
          }   
       }      
-      catch { build_info.can_build = false; }
+      else
+      {
+         build_info.can_build = false;
+      }
       
-      try
+      if(HasJSON(routine_json, "language"))
       {
          if(routine_json["language"].type() == JSON_TYPE.STRING)
          {
             build_info.language = routine_json["language"].str();
          } 
       }      
-      catch { build_info.can_build = false; }
+      else
+      {
+         build_info.can_build = false;
+      }
       
       try
       {
@@ -669,13 +679,13 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
 {
    if(params.length == 2)
    {
-      writeln("\tCopy ", routine_info.directory ~ params[0], " -> ", routine_info.directory ~ params[1]);
-      CopyFile(routine_info.directory ~ params[0], routine_info.directory ~ params[1]);
+      writeln("\tCopy ", routine_info.directory ~ RemoveLocal(params[0]), " -> ", routine_info.directory ~ RemoveLocal(params[1]));
+      CopyFile(routine_info.directory ~ RemoveLocal(params[0]), routine_info.directory ~ RemoveLocal(params[1]));
    }
    else if(params.length == 3)
    {
-      writeln("\tCopy ", routine_info.directory ~ params[0], " (", params[2], ") -> ", routine_info.directory ~ params[1]);
-      CopyFolder(routine_info.directory ~ params[0], routine_info.directory ~ params[1], params[2]);
+      writeln("\tCopy ", routine_info.directory ~ RemoveLocal(params[0]), " (", params[2], ") -> ", routine_info.directory ~ RemoveLocal(params[1]));
+      CopyFolder(routine_info.directory ~ RemoveLocal(params[0]), routine_info.directory ~ RemoveLocal(params[1]), params[2]);
    }
 }
 
@@ -1115,6 +1125,16 @@ bool HasJSON(JSONValue json, string ID)
    {
       return false;
    }
+}
+
+string RemoveLocal(string str)
+{
+   if(str.startsWith("./"))
+   {
+      return str[2 .. $];
+   }
+   
+   return str;
 }
 
 void CopyFile(string source, string destination)

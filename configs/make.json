@@ -5,6 +5,7 @@
       "language": "C",
       "operations":
       [
+         ["call", "make_dl.json"],
          ["copy", "../dub.json", "../bob.json"],
          ["||", "../", "../test/", ".random"],         
          ["delete", "../toremove.txt"],
@@ -46,15 +47,15 @@
    {
       "operations":
       [
-         ["move", "./bob.json", "./test/bob.json"]
+         ["move", "../bob.json", "../test/bob.json"]
       ]
    },
    "CallTest":
    {
       "operations":
       [
-         ["call", "./configs/test.json", "Func1", "Func2"],
-         ["||", "./configs/test.json"]
+         ["call", "test.json", "Func1", "Func2"],
+         ["||", "test.json"]
       ]
    }
 }

@@ -1,11 +1,11 @@
 Custom Build System
 -----------------------------
 
-    -multi programming language
+   <O> multi programming language
 
-   -easy (to a degree)
+   <O> easy (to a degree)
 
-    -multiplatform & multiarchitecture
+   <O> multiplatform & multiarchitecture
 
 Information
 ---------------------------------

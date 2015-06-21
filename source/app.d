@@ -84,8 +84,7 @@ void main(string[] args)
    
    if(args.length == 2)
    {
-      string config_file_default_routine = GetDefaultRoutine(config_file_path); 
-      RunRoutine(config_file_path, config_file_default_routine);
+      RunRoutine(config_file_path, GetDefaultRoutine(config_file_path));
    }
    else if(args.length > 2)
    {
@@ -120,8 +119,7 @@ void main(string[] args)
       
       if(!function_called)
       {
-         string config_file_default_routine = GetDefaultRoutine(config_file_path); 
-         RunRoutine(config_file_path, config_file_default_routine, version_type);
+         RunRoutine(config_file_path, GetDefaultRoutine(config_file_path), version_type);
       }
    }
 }
@@ -138,14 +136,14 @@ string GetDefaultRoutine(string file_path)
 
    JSONValue file_json = parseJSON(readText(file_path));
    
-   try
+   if(HasJSON(file_json, "default"))
    {
       if(file_json["default"].type() == JSON_TYPE.STRING)
       {
          return file_json["default"].str();
       }
    }
-   catch
+   else
    {
       writeln("missing default routine");
       exit(-1);
@@ -169,12 +167,11 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
    if(!HasJSON(file_json, routine_name))
       return;
    
-   if(file_json[routine_name].type() == JSON_TYPE.OBJECT)
+   JSONValue routine_json = file_json[routine_name];
+   
+   if(routine_json.type() == JSON_TYPE.OBJECT)
    {
-      JSONValue routine_json = file_json[routine_name];
-      
       BuildInformation build_info;
-      
       build_info.language = "";
       build_info.type = "";
       build_info.can_build = true;
@@ -186,7 +183,6 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       build_info.platform.OS = GetOSName();
       
       VersionInformation version_info;
-      
       version_info.type = version_type;
       version_info.major = 0;
       version_info.minor = 0;
@@ -195,7 +191,6 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       version_info.is_versioned = true;
       
       BuildRoutine routine_info;
-      
       routine_info.path = file_path;
       routine_info.name = routine_name;
       routine_info.directory = file_path[0 .. file_path.lastIndexOf("/") + 1];
@@ -392,9 +387,10 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
       return;
    }
    
-   if(routine_json["operations"].type() == JSON_TYPE.ARRAY)
+   JSONValue operations_json = routine_json["operations"];
+   
+   if(operations_json.type() == JSON_TYPE.ARRAY)
    {
-      JSONValue operations_json = routine_json["operations"];
       string last_operation_token = "";
       bool has_built = false;
       
@@ -405,6 +401,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
          if(operation_json.type() == JSON_TYPE.ARRAY)
          {
             string operation_token = operation_json[0].str();
+            
             if((operation_token !=  "=") && (operation_token !=  "||"))
             {
                last_operation_token = operation_token;
@@ -424,42 +421,33 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
             }
             
             string[] operation_params = new string[operation_json.array.length - 1];
+            
             for(int i = 1; i < operation_json.array.length; ++i)
             {
                if(operation_json[i].type() == JSON_TYPE.STRING)
                {
                   if(IsProperPlatform(operation_json[i].str(), build_info.platform))
-                  {
                      operation_params[i - 1] = RemoveTags(operation_json[i].str(), build_info.platform);
-                  }
                }
             }
             
             switch(operation_token)
             {
                case "move":
-               {
                   MoveOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "delete":
-               {
                   DeleteOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "copy":
-               {
                   CopyOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "call":
-               {
                   CallOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "print":
                {
@@ -473,14 +461,13 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                break;
                
                default:
-               {
                   writeln("Unknown Operation: ", operation_token);
-               }
             }
          }
          else if(operation_json.type() == JSON_TYPE.STRING)
          {
             string operation_token = operation_json.str();
+            
             if((operation_token !=  "=") && (operation_token !=  "||"))
             {
                last_operation_token = operation_token;
@@ -490,27 +477,30 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                operation_token = last_operation_token;
             }
             
+            if(IsProperPlatform(operation_token, build_info.platform))
+            {
+               operation_token = RemoveTags(operation_token, build_info.platform);
+            }
+            else
+            {
+               continue;
+            }
+            
             switch(operation_token)
             {
                case "build":
-               {
                   BuildOperation(routine, build_info, version_info);
                   has_built = true;
-               }
-               break;
+                  break;
                
                default:
-               {
                   writeln("Unknown Operation: ", operation_token);
-               }
             }
          }
       }
       
       if(!has_built)
-      {
          BuildOperation(routine, build_info, version_info);
-      }
    }
 }
 
@@ -522,9 +512,10 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
    if(!HasJSON(routine_json, "per-operations"))
       return;
    
-   if(routine_json["per-operations"].type() == JSON_TYPE.ARRAY)
+   JSONValue operations_json = routine_json["per-operations"];
+   
+   if(operations_json.type() == JSON_TYPE.ARRAY)
    {
-      JSONValue operations_json = routine_json["per-operations"];
       string last_operation_token = "";
       
       writeln("Executing Per Build Commands:");
@@ -534,6 +525,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
          if(operation_json.type() == JSON_TYPE.ARRAY)
          {
             string operation_token = operation_json[0].str();
+            
             if((operation_token !=  "=") && (operation_token !=  "||"))
             {
                last_operation_token = operation_token;
@@ -553,6 +545,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
             }
             
             string[] operation_params = new string[operation_json.array.length - 1];
+            
             for(int i = 1; i < operation_json.array.length; ++i)
             {
                if(operation_json[i].type() == JSON_TYPE.STRING)
@@ -560,19 +553,19 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
                   if(IsProperPlatform(operation_json[i].str(), build_info.platform))
                   {
                      operation_params[i - 1] = RemoveTags(operation_json[i].str(), build_info.platform)
-                                               .replace("[OUTPUT_DIRECTORY]", output_directory)
-                                               .replace("[ARCH_NAME]", build_info.platform.arch)
-                                               .replace("[OS_NAME]", build_info.platform.OS)
-                                               .replace("[PROJECT_NAME]", build_info.project_name);
+                     .replace("[OUTPUT_DIRECTORY]", output_directory)
+                     .replace("[ARCH_NAME]", build_info.platform.arch)
+                     .replace("[OS_NAME]", build_info.platform.OS)
+                     .replace("[PROJECT_NAME]", build_info.project_name);
                                                
                      if(version_info.is_versioned)
                      {
                         operation_params[i - 1] = operation_params[i - 1]
-                                                      .replace("[MAJOR_VERSION]", to!string(version_info.major))
-                                                      .replace("[MINOR_VERSION]", to!string(version_info.minor))
-                                                      .replace("[PATCH_VERSION]", to!string(version_info.patch))
-                                                      .replace("[APPENDED_VERSION]", version_info.appended)
-                                                      .replace("[VERSION]", version_string);
+                        .replace("[MAJOR_VERSION]", to!string(version_info.major))
+                        .replace("[MINOR_VERSION]", to!string(version_info.minor))
+                        .replace("[PATCH_VERSION]", to!string(version_info.patch))
+                        .replace("[APPENDED_VERSION]", version_info.appended)
+                        .replace("[VERSION]", version_string);
                      }
                   }
                }
@@ -581,28 +574,20 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
             switch(operation_token)
             {
                case "move":
-               {
                   MoveOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "delete":
-               {
                   DeleteOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "copy":
-               {
                   CopyOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "call":
-               {
                   CallOperation(routine, operation_params);
-               }
-               break;
+                  break;
                
                case "print":
                {
@@ -616,9 +601,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
                break;
                
                default:
-               {
                   writeln("Unknown Operation: ", operation_token);
-               }
             }
          }
       }
@@ -631,10 +614,7 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
    {
       if(version_info.is_versioned)
       {
-         try 
-         { 
-            UpdateVersions(routine, version_info.type); 
-         } catch { writeln("version update failed!"); }
+         UpdateVersions(routine, version_info.type); 
       }
       
       JSONValue routine_json = GetRoutineJSON(routine);
@@ -750,53 +730,76 @@ void CallOperation(BuildRoutine routine_info, string[] params)
 void UpdateVersions(BuildRoutine routine, VersionType type)
 {
    JSONValue file_json = parseJSON(readText(routine.path));
+   bool update_versions = true;
    
    if(type != VersionType.None)
    {
-      if(file_json[routine.name].type() == JSON_TYPE.OBJECT)
-      {  
-         if(file_json[routine.name]["version"].type() == JSON_TYPE.ARRAY)
+      if(HasJSON(file_json, routine.name) &&
+         HasJSON(file_json[routine.name], "version"))
+      {
+         JSONValue version_json = file_json[routine.name]["version"];
+         
+         if(version_json.type() != JSON_TYPE.ARRAY)
          {
-            if(file_json[routine.name]["version"][0].type() == JSON_TYPE.INTEGER &&
-               file_json[routine.name]["version"][1].type() == JSON_TYPE.INTEGER &&
-               file_json[routine.name]["version"][2].type() == JSON_TYPE.INTEGER)
+            update_versions = false;
+         }
+         else
+         {
+            if(version_json.array.length < 3)
+               update_versions = false;
+         }
+      }
+      else
+      {
+         update_versions = false;
+      }
+   
+      if(update_versions)
+      {  
+         if(file_json[routine.name]["version"][0].type() == JSON_TYPE.INTEGER &&
+            file_json[routine.name]["version"][1].type() == JSON_TYPE.INTEGER &&
+            file_json[routine.name]["version"][2].type() == JSON_TYPE.INTEGER)
+         {
+            if(type == VersionType.Major)
             {
-               if(type == VersionType.Major)
-               {
-                  file_json[routine.name]["version"][0] = file_json[routine.name]["version"][0].integer + 1;
-                  file_json[routine.name]["version"][1] = 0;
-                  file_json[routine.name]["version"][2] = 0;
-               }
-               else if(type == VersionType.Minor)
-               {
-                  file_json[routine.name]["version"][1] = file_json[routine.name]["version"][1].integer + 1;
-                  file_json[routine.name]["version"][2] = 0;
-               }
-               else if(type == VersionType.Patch)
-               {
-                  file_json[routine.name]["version"][2] = file_json[routine.name]["version"][2].integer + 1;
-               }
+               file_json[routine.name]["version"][0] = file_json[routine.name]["version"][0].integer + 1;
+               file_json[routine.name]["version"][1] = 0;
+               file_json[routine.name]["version"][2] = 0;
+            }
+            else if(type == VersionType.Minor)
+            {
+               file_json[routine.name]["version"][1] = file_json[routine.name]["version"][1].integer + 1;
+               file_json[routine.name]["version"][2] = 0;
+            }
+            else if(type == VersionType.Patch)
+            {
+               file_json[routine.name]["version"][2] = file_json[routine.name]["version"][2].integer + 1;
             }
          }
       }
    }
+   else
+   {
+      writeln("Version update failed!");
+   }
    
+   CopyFile(routine.path, routine.path ~ ".old");
    //TODO: writeln(routine.path ~ ":\n" ~ file_json.toPrettyString() ~ "\n");
-   //TODO: enable this std.file.write(routine.path ~ ".new", file_json.toPrettyString());
+   //TODO: enable this std.file.write(routine.path, file_json.toPrettyString());
 }
 
 JSONValue GetRoutineJSON(BuildRoutine routine)
 {
    JSONValue file_json = parseJSON(readText(routine.path));
    
-   try
+   if(HasJSON(file_json, routine.name))
    {
       if(file_json[routine.name].type() == JSON_TYPE.OBJECT)
       {
          return file_json[routine.name];
       }
    }
-   catch
+   else
    {
       writeln("Routine " ~ routine.name ~ " not found in file " ~ routine.path ~ "!");
    }
@@ -871,8 +874,6 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
 
 string[] GetLanguageOptionalAttribs(string file_path, string language_name, string build_type)
 {
-   //writeln("Loading optional attributes for ", language_name, "(", build_type, ") from ", file_path);
-   
    JSONValue language_json = GetLanguageJSON(file_path, language_name);
    string[] output = null;
    
@@ -943,7 +944,7 @@ string[] GetArchitectureNames(string file_path)
    JSONValue file_json = parseJSON(readText(file_path));
    string[] arch_names = null;
    
-   try
+   if(HasJSON(file_json, "architectures"))
    {
       if(file_json["architectures"].type() == JSON_TYPE.ARRAY)
       {
@@ -960,9 +961,9 @@ string[] GetArchitectureNames(string file_path)
          }
       }
    }
-   catch 
+   else 
    {
-      writeln("No available architectures present!");
+      writeln("No available architectures!");
       exit(-1);
    }
    
@@ -1009,6 +1010,7 @@ string RemoveTags(string tag, PlatformInformation platform)
                        .replace("[NOPT]", "");
                        
    int letter_index = 0;              
+   
    foreach(char c; new_tag)
    {
       if(c != ' ')
@@ -1034,9 +1036,7 @@ string ProcessTags(string tag, BuildInformation build_info)
       foreach(string attrib_element; attrib_array)
       {
          if(IsProperPlatform(attrib_element, build_info.platform))
-         {
             attrib_string = attrib_string ~ " " ~ RemoveTags(attrib_element, build_info.platform);
-         }
       }
       
       new_tag = new_tag.replace("[ATTRIB: " ~ attrib_name ~ "]", attrib_string);
@@ -1146,9 +1146,8 @@ bool HasJSON(JSONValue json, string ID)
    try
    {
       if(json.type() != JSON_TYPE.OBJECT)
-      {
          return false;
-      }
+         
       json[ID];
       return true;
    }
@@ -1163,9 +1162,7 @@ string PathF(string str, BuildRoutine routine)
    string new_str = str;
    
    if(new_str.startsWith("./"))
-   {
       new_str = new_str[2 .. $];
-   }
 
    return routine.directory ~ new_str;
 }
@@ -1176,14 +1173,11 @@ void CopyFile(string source, string destination)
    {
       string dest_directory = destination[0 .. destination.lastIndexOf("/")];
       if(!exists(dest_directory))
-      {
          mkdirRecurse(dest_directory);
-      }
    
       if(isFile(source))
-      {
          copy(source, destination, PreserveAttributes.no);
-      }
+         
    } catch {} 
 }
 
@@ -1196,9 +1190,8 @@ void CopyFolder(string source, string destination, string ending = "")
          foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
          {
             if(e.isFile() && e.name().endsWith(ending))
-            {
                CopyFile(e.name(), destination ~ e.name().replace(source, ""));
-            }
+               
          }
       }
    } catch {}
@@ -1209,9 +1202,8 @@ void DeleteFile(string path)
    try
    {
       if(isFile(path))
-      {
          remove(path);
-      }
+
    } catch {} 
 }
 
@@ -1224,9 +1216,8 @@ void DeleteFolder(string path, string ending = "")
          foreach(DirEntry e; dirEntries(path, SpanMode.shallow))
          {
             if(e.isFile() && e.name().endsWith(ending))
-            {
                DeleteFile(e.name());
-            }
+               
          }
       }
    } catch {}

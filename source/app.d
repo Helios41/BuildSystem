@@ -1070,7 +1070,10 @@ string ProcessTags(string tag, BuildInformation build_info, BuildRoutine routine
       foreach(string attrib_element; attrib_array)
       {
          if(IsProperPlatform(attrib_element, build_info.platform))
-            attrib_string = attrib_string ~ " " ~ RemoveTags(attrib_element, build_info.platform);
+            attrib_string = attrib_string ~ " " ~ RemoveTags(attrib_element, build_info.platform)
+                                                  .replace("[ARCH_NAME]", build_info.platform.arch)
+                                                  .replace("[OS_NAME]", build_info.platform.OS)
+                                                  .replace("[PROJECT_NAME]", build_info.project_name);
       }
       
       new_tag = new_tag.replace("[ATTRIB: " ~ attrib_name ~ "]", attrib_string);

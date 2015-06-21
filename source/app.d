@@ -1351,10 +1351,19 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       mkdirRecurse(PathF(output_folder, routine_info));
    }
    
-   foreach(SourceDescription source; build_info.source_folders)
+   foreach(SourceDescription source_in; build_info.source_folders)
    {
-      CopyFile(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
-      CopyFolder(PathF(source.path, routine_info), temp_dir ~ "/", source.ending);
+      if(AreTagsValid(source_in.path, build_info))
+      {
+         SourceDescription source = source_in;
+         source.path = ProcessTags(source_in.path, build_info, routine_info)
+                       .replace("[ARCH_NAME]", build_info.platform.arch)
+                       .replace("[OS_NAME]", build_info.platform.OS)
+                       .replace("[PROJECT_NAME]", build_info.project_name);
+         
+         CopyFile(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+         CopyFolder(PathF(source.path, routine_info), temp_dir ~ "/", source.ending);
+      }
    }
 
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
@@ -1366,6 +1375,8 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       if(AreTagsValid(command_template, build_info))
       {
          string command = ProcessTags(command_template, build_info, routine_info)
+                          .replace("[ARCH_NAME]", build_info.platform.arch)
+                          .replace("[OS_NAME]", build_info.platform.OS)
                           .replace("[PROJECT_NAME]", build_info.project_name)
                           .replace("[BUILD_DIRECTORY]", temp_dir)
                           .replace("[OUTPUT_FILE]", output_file_name);

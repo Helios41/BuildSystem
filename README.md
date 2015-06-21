@@ -1,10 +1,14 @@
 Custom Build System
+-----------------------------
 
--multi programming language
+    -multi programming language
 
--easy (to a degree)
+   -easy (to a degree)
 
--multiplatform & multiarchitecture
+    -multiplatform & multiarchitecture
+
+Information
+---------------------------------
 
 Release v1 is out
 

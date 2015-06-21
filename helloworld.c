@@ -10,7 +10,15 @@ int main()
   MessageBox(NULL, TEXT("Text"), TEXT("Title"), MB_ICONWARNING);
   printf("Hello world\n");
   
-  HINSTANCE DLibraryHandle = LoadLibrary("./DLTest.dll");
+  /*
+  When specifying a path, be sure to use backslashes (\), not forward slashes (/)
+  https://msdn.microsoft.com/en-us/library/windows/desktop/ms684175%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
+  */
+  
+  char LibraryPath[50];
+  
+  printf("Enter Library Path:\n");
+  HINSTANCE DLibraryHandle = LoadLibrary(fgets(LibraryPath, 50, stdin)); //(".\DLTest.dll"); //./DLTest.dll
   add_integers_foo_t add_integers_foo = NULL;
   
   if(DLibraryHandle == NULL)

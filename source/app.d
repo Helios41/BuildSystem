@@ -13,7 +13,11 @@ import std.container;
 /**
 TODO:
    -Clean up code & comments
-   -re enable version files
+*/
+
+/**
+        Attribute Cross Reference format
+[ATTRIB_REF: _attrib_name_<-_file_:_routine_optional_]
 */
 
 enum VersionType : string
@@ -79,7 +83,7 @@ void main(string[] args)
    if(args.length < 2)
    {
       writeln("Insufficient arguments!");
-      writeln("Usage \'buildsystem [config file]\'");
+      writeln("Usage \'rebuild [config file]\'");
       return;
    }
    
@@ -1203,8 +1207,6 @@ string GetAttributeStringFromRoutine(BuildRoutine routine, string attrib_name)
 
 bool IsAttributeCrossReference(string attrib_tag)
 {
-   //Attribute Cross Reference format:
-   //[ATTRIB_REF: _attrib_name_<-_file_:_routine_optional_]
    if(attrib_tag.canFind("[ATTRIB_REF: ") && 
       attrib_tag.canFind("<-") && 
       attrib_tag.canFind("]"))

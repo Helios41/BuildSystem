@@ -13,6 +13,7 @@ import std.conv;
 TODO:
    -Clean up code & comments
    -documentation
+   -dependencies using file ending
 */
 
 /**
@@ -49,9 +50,10 @@ struct PlatformInformation
    string OS;
 }
 
-struct SourceDescription
+struct FileDescription
 {
    string path;
+   string begining = "";
    string ending = "";
 }
 
@@ -61,11 +63,11 @@ struct BuildInformation
    bool can_build;
    string type;
    string language;
-   SourceDescription[] source_folders;
+   FileDescription[] source_folders;
    string build_folder;
    string project_name;
    string[][string] attributes;
-   string static_libraries;
+   FileDescription[] dependencies;
 }
 
 struct BuildRoutine
@@ -205,7 +207,7 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       build_info.platform.optimized = true;
       build_info.platform.arch = "";
       build_info.platform.OS = GetOSName();
-      build_info.static_libraries = "";
+      build_info.dependencies = null;
       
       VersionInformation version_info;
       version_info.type = version_type;
@@ -253,14 +255,15 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       
       if(HasJSON(routine_json, "source"))
       {
-         if(routine_json["source"].type() == JSON_TYPE.STRING)
+         JSONValue source_json = routine_json["source"];
+         build_info.source_folders = new FileDescription[JSONArraySize(source_json)];
+         
+         if(source_json.type() == JSON_TYPE.STRING)
          {
-            build_info.source_folders = new SourceDescription[1];
             build_info.source_folders[0].path = routine_json["source"].str();
          }
-         else if(routine_json["source"].type() == JSON_TYPE.ARRAY)
+         else if(source_json.type() == JSON_TYPE.ARRAY)
          {
-            build_info.source_folders = new SourceDescription[routine_json["source"].array.length];
             int index = 0;
          
             foreach(JSONValue value; routine_json["source"].array)
@@ -383,6 +386,8 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       {
          JSONValue dependencies_json = routine_json["dependencies"];
          
+         //TODO: file endings
+         build_info.dependencies = new FileDescription[JSONArraySize(dependencies_json)];
          JSONMapString(dependencies_json, (string dep_str_in, int i) 
          {
             if(AreTagsValid(dep_str_in, build_info))
@@ -390,13 +395,16 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
                string dep_str = ProcessTags(dep_str_in , build_info, routine_info);
                
                if(dep_str.canFind("/"))
-               {
-                  dep_str = PathF(dep_str, routine_info);  
-               }
+                  dep_str = PathF(dep_str, routine_info);
                
-               build_info.static_libraries = build_info.static_libraries ~ dep_str;  
+               build_info.dependencies[i].path = dep_str;  
             }
          });
+      }
+      else
+      {
+         build_info.dependencies = new FileDescription[1];
+         build_info.dependencies[0].path = "";
       }
       
       ExecuteOperations(routine_info, build_info, version_info);
@@ -1475,11 +1483,11 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       mkdirRecurse(PathF(output_folder, routine_info));
    }
    
-   foreach(SourceDescription source_in; build_info.source_folders)
+   foreach(FileDescription source_in; build_info.source_folders)
    {
       if(AreTagsValid(source_in.path, build_info))
       {
-         SourceDescription source = source_in;
+         FileDescription source = source_in;
          source.path = ProcessTags(source_in.path, build_info, routine_info)
                        .replace("[ARCH_NAME]", build_info.platform.arch)
                        .replace("[OS_NAME]", build_info.platform.OS)
@@ -1490,6 +1498,13 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       }
    }
 
+   string dependencies = "";
+   foreach(FileDescription dep; build_info.dependencies)
+   {
+      //TODO: file endings
+      dependencies = dependencies ~ " " ~ dep.path;
+   }
+   
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
 
    string command_batch = "";
@@ -1504,7 +1519,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
                           .replace("[PROJECT_NAME]", build_info.project_name)
                           .replace("[BUILD_DIRECTORY]", temp_dir)
                           .replace("[OUTPUT_FILE]", output_file_name)
-                          .replace("[DEPENDENCIES]", build_info.static_libraries);
+                          .replace("[DEPENDENCIES]", dependencies);
      
          if(command_batch == "")
          {

@@ -8,17 +8,19 @@ import std.c.stdlib;
 import BuildSystemConfigurable;
 import std.uuid;
 import std.conv;
-import std.container;
 
 /**
 TODO:
    -Clean up code & comments
+   -documentation
 */
 
 /**
-        Attribute Cross Reference format
-[ATTRIB_REF: _attrib_name_<-_file_:_routine_optional_]
+        Field Cross Reference format
+[FIELD_REF: _field_name_<-_file_:_routine_optional_]
 */
+
+const string GlobalConfigFilePath = "./global_config.json";
 
 enum VersionType : string
 {
@@ -63,6 +65,7 @@ struct BuildInformation
    string build_folder;
    string project_name;
    string[][string] attributes;
+   string static_libraries;
 }
 
 struct BuildRoutine
@@ -72,9 +75,10 @@ struct BuildRoutine
    string name;
 }
 
-struct AttributeCrossReference
+struct FieldCrossReference
 {
-   string attribute;
+   string field;
+   string tag;
    BuildRoutine routine;
 }
 
@@ -190,7 +194,6 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
    if(routine_json.type() == JSON_TYPE.OBJECT)
    {
       BuildRoutine routine_info = MakeRoutine(file_path, routine_name);
-      GetAttributeCrossReference(routine_info, "[ATTRIB_REF: TEST<-SOMEFILE:ROUTINE_NAME]");
    
       BuildInformation build_info;
       build_info.language = "";
@@ -202,6 +205,7 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       build_info.platform.optimized = true;
       build_info.platform.arch = "";
       build_info.platform.OS = GetOSName();
+      build_info.static_libraries = "";
       
       VersionInformation version_info;
       version_info.type = version_type;
@@ -365,28 +369,34 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
                   string attribute_name = attribute_name_json.str();
                   JSONValue attribute_json = routine_json[attribute_name];
                   
-                  if(attribute_json.type() == JSON_TYPE.STRING)
+                  build_info.attributes[attribute_name] = new string[JSONArraySize(attribute_json)];
+                  JSONMapString(attribute_json, (string attrib_str, int i)
                   {
-                     build_info.attributes[attribute_name] = new string[1];
-                     build_info.attributes[attribute_name][0] = routine_json[attribute_name].str();
-                  }
-                  else if(attribute_json.type() == JSON_TYPE.ARRAY)
-                  {
-                     build_info.attributes[attribute_name] = new string[attribute_json.array.length];
-                     int index = 0;
-                     
-                     foreach(JSONValue element_json; attribute_json.array)
-                     {
-                        if(element_json.type() == JSON_TYPE.STRING)
-                        {
-                           build_info.attributes[attribute_name][index] = element_json.str();
-                           ++index;
-                        }
-                     }
-                  }
+                     build_info.attributes[attribute_name][i] = attrib_str;
+                  });
                }
             }
          }
+      }
+      
+      if(HasJSON(routine_json, "dependencies"))
+      {
+         JSONValue dependencies_json = routine_json["dependencies"];
+         
+         JSONMapString(dependencies_json, (string dep_str_in, int i) 
+         {
+            if(AreTagsValid(dep_str_in, build_info))
+            {
+               string dep_str = ProcessTags(dep_str_in , build_info, routine_info);
+               
+               if(dep_str.canFind("/"))
+               {
+                  dep_str = PathF(dep_str, routine_info);  
+               }
+               
+               build_info.static_libraries = build_info.static_libraries ~ dep_str;  
+            }
+         });
       }
       
       ExecuteOperations(routine_info, build_info, version_info);
@@ -465,6 +475,14 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                   CallOperation(routine, operation_params);
                   break;
                
+               case "cmd":
+                  CommandOperation(routine, operation_params);
+                  break;
+               
+               case "replace":
+                  ReplaceOperation(routine, operation_params);
+                  break;
+               
                case "print":
                {
                   string to_print = "";
@@ -526,18 +544,41 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
    string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
    
    if(!HasJSON(routine_json, "per-operations"))
+   {
+      Build(output_directory, routine, build_info, version_info);
       return;
+   }
    
    JSONValue operations_json = routine_json["per-operations"];
    
    if(operations_json.type() == JSON_TYPE.ARRAY)
    {
-      string last_operation_token = "";
-      
-      writeln("Executing Per Build Commands:");
+      bool specifies_build = false;
+      bool has_built = false;
       
       foreach(JSONValue operation_json; operations_json.array)
       {
+         if(operation_json.type() == JSON_TYPE.STRING)
+         {
+            if(operation_json.str() == "build")
+            {
+               specifies_build = true;
+            }
+         }
+      }
+      
+      if(!specifies_build)
+      {
+         has_built = true;
+         Build(output_directory, routine, build_info, version_info);
+      }
+   
+      string last_operation_token = "";
+   
+      writeln("Executing Per Build Commands:");
+      
+      foreach(JSONValue operation_json; operations_json.array)
+      { 
          if(operation_json.type() == JSON_TYPE.ARRAY)
          {
             string operation_token = operation_json[0].str();
@@ -605,6 +646,14 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
                   CallOperation(routine, operation_params);
                   break;
                
+               case "cmd":
+                  CommandOperation(routine, operation_params);
+                  break;
+               
+               case "replace":
+                  ReplaceOperation(routine, operation_params);
+                  break;
+               
                case "print":
                {
                   string to_print = "";
@@ -620,9 +669,54 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
                   writeln("Unknown Operation: ", operation_token);
             }
          }
+         else if(operation_json.type() == JSON_TYPE.STRING)
+         {
+            string operation_token = operation_json.str();
+                  
+            if((operation_token !=  "=") && (operation_token !=  "||"))
+            {
+               last_operation_token = operation_token;
+            }
+            else
+            {
+               operation_token = last_operation_token;
+            }
+                  
+            if(AreTagsValid(operation_token, build_info))
+            {
+               operation_token = ProcessTags(operation_token, build_info, routine);
+            }
+            else
+            {
+               continue;
+            }
+                  
+            switch(operation_token)
+            {
+               case "build":
+               {
+                  if(!has_built)
+                  {
+                     has_built = true;
+                     writeln("\tBuilding...");
+                     Build(output_directory, routine, build_info, version_info);
+                  }
+                  else
+                  {
+                     writeln("Already built!");
+                  }
+               }
+               break;
+               
+               default:
+                  writeln("Unknown Operation: ", operation_token);
+            }
+         }
       }
    }
 }
+
+
 
 void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionInformation in_version_info)
 {
@@ -648,8 +742,6 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
          {
             rmdirRecurse(PathF(output_folder, routine));
          }
-            
-         Build(output_folder, routine, build_info, version_info);
          
          ExecutePerOperations(output_folder, routine, build_info, version_info);
       }
@@ -706,6 +798,11 @@ void CallOperation(BuildRoutine routine_info, string[] params)
    
    if(params.length > 1)
    {
+      if((params[0] == "=") || (params[0] == "||"))
+      {
+         params[0] = routine_info.path;
+      }
+      
       VersionType version_type = VersionType.None;
       bool function_called = false;
       
@@ -741,6 +838,28 @@ void CallOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 1)
    {
       RunRoutine(PathF(params[0], routine_info), GetDefaultRoutine(PathF(params[0], routine_info)));
+   }
+}
+
+void CommandOperation(BuildRoutine routine_info, string[] params)
+{
+   foreach(string command; params)
+   {
+      system(toStringz(command));
+   }
+}
+
+void ReplaceOperation(BuildRoutine routine_info, string[] params)
+{
+   if(params.length > 2)
+   {
+      foreach(string file_name; params[2 .. $])
+      {
+         string file_path = PathF(file_name, routine_info);
+         string file_contents = readText(file_path);
+         file_contents = file_contents.replace(params[0], params[1]);
+         std.file.write(file_path, file_contents);
+      }
    }
 }
 
@@ -1084,21 +1203,16 @@ string ProcessTags(string tag, BuildInformation build_info, BuildRoutine routine
       new_tag = new_tag.replace("[ATTRIB: " ~ optional_attrib_name ~ "]", ""); 
    }
    
-   if(IsAttributeCrossReference(new_tag))
+   if(IsFieldCrossReference(new_tag))
    {
-      AttributeCrossReference acr = GetAttributeCrossReference(routine_info, new_tag);
+      FieldCrossReference fcr = GetFieldCrossReference(routine_info, new_tag);
       
-      BuildRoutine acr_routine = acr.routine;
-      acr_routine.path = PathF(acr.routine.path, routine_info);
-      acr_routine.directory = PathF(acr.routine.directory, routine_info);
+      BuildRoutine fcr_routine = fcr.routine;
+      fcr_routine.path = PathF(fcr.routine.path, routine_info);
+      fcr_routine.directory = PathF(fcr.routine.directory, routine_info);
       
-      string attrib_string = GetAttributeStringFromRoutine(acr_routine, acr.attribute);
-      
-      new_tag = new_tag.replace("[ATTRIB_REF: " ~ acr.attribute ~ "<-" ~ acr.routine.path ~ "]", 
-                                attrib_string);
-                                
-      new_tag = new_tag.replace("[ATTRIB_REF: " ~ acr.attribute ~ "<-" ~ acr.routine.path ~ ":" ~ acr.routine.name ~ "]",
-                                attrib_string);
+      string field_string = GetFieldStringFromRoutine(fcr_routine, fcr.field);
+      new_tag = new_tag.replace(fcr.tag, field_string);
    }
    
    return new_tag;
@@ -1147,57 +1261,28 @@ bool AreTagsValid(string tag, BuildInformation build_info)
    return tags_valid;
 }
 
-string[] GetAttributeFromRoutine(BuildRoutine routine, string attrib_name)
+string[] GetFieldFromRoutine(BuildRoutine routine, string field_name)
 {
    JSONValue routine_json = GetRoutineJSON(routine);
-   string[] attrib_array = null;
+   string[] field_array = null;
    
-   if(HasJSON(routine_json, "attributes"))
+   if(HasJSON(routine_json, field_name))
    {
-      JSONValue attributes_json = routine_json["attributes"]; 
-      bool has_attribute = false;
-   
-      if(attributes_json.type() == JSON_TYPE.ARRAY)
-      {
-         foreach(JSONValue value_json; attributes_json.array)
-         {
-            if(value_json.type() == JSON_TYPE.STRING)
-            {
-               if(value_json.str() == attrib_name)
-                  has_attribute = true;
-            }
-         }
-      }
+      JSONValue field_json = routine_json[field_name];
       
-      if(has_attribute && HasJSON(routine_json, attrib_name))
+      field_array = new string[JSONArraySize(field_json)];
+      JSONMapString(field_json, (string field_str, int i)
       {
-         JSONValue attribute_json = routine_json[attrib_name];
-         
-         if(attribute_json.type() == JSON_TYPE.STRING)
-         {
-            attrib_array = new string[1];
-            attrib_array[0] = attribute_json.str();
-         }
-         else if(attribute_json.type() == JSON_TYPE.ARRAY)
-         {  
-            int index = 0;
-            attrib_array = new string[attribute_json.array.length];
-         
-            foreach(JSONValue element_json; attribute_json.array)
-            {
-               if(element_json.type() == JSON_TYPE.STRING)
-                  attrib_array[index++] = element_json.str();
-            }
-         }
-      }
+         field_array[i] = field_str;
+      });
    }
    
-   return attrib_array;
+   return field_array;
 }
 
-string GetAttributeStringFromRoutine(BuildRoutine routine, string attrib_name)
+string GetFieldStringFromRoutine(BuildRoutine routine, string attrib_name)
 {
-   string[] attrib_array = GetAttributeFromRoutine(routine, attrib_name);
+   string[] attrib_array = GetFieldFromRoutine(routine, attrib_name);
    string attrib_string = "";
    
    foreach(string attrib_element; attrib_array)
@@ -1208,9 +1293,9 @@ string GetAttributeStringFromRoutine(BuildRoutine routine, string attrib_name)
    return attrib_string;
 }
 
-bool IsAttributeCrossReference(string attrib_tag)
+bool IsFieldCrossReference(string attrib_tag)
 {
-   if(attrib_tag.canFind("[ATTRIB_REF: ") && 
+   if(attrib_tag.canFind("[FIELD_REF: ") && 
       attrib_tag.canFind("<-") && 
       attrib_tag.canFind("]"))
    {
@@ -1220,30 +1305,31 @@ bool IsAttributeCrossReference(string attrib_tag)
    return false;
 }
 
-AttributeCrossReference GetAttributeCrossReference(BuildRoutine routine_info, string in_attrib_tag)
+FieldCrossReference GetFieldCrossReference(BuildRoutine routine_info, string in_field_tag)
 {
-   string attrib_tag = in_attrib_tag[in_attrib_tag.indexOf("[ATTRIB_REF: ") + "[ATTRIB_REF: ".length .. $];
+   string field_tag = in_field_tag[in_field_tag.indexOf("[FIELD_REF: ") + "[FIELD_REF: ".length .. $];
    
-   string attrib_name = attrib_tag[0 .. attrib_tag.indexOf("<-")];
-   attrib_tag = attrib_tag[attrib_tag.indexOf("<-") + 2 .. $];
+   string field_name = field_tag[0 .. field_tag.indexOf("<-")];
+   field_tag = field_tag[field_tag.indexOf("<-") + 2 .. $];
    
-   int end_of_file_path = attrib_tag.indexOf(":") >= 0 ? attrib_tag.indexOf(":") : attrib_tag.indexOf("]");
-   string file_path = attrib_tag[0 .. end_of_file_path];
+   int end_of_file_path = field_tag.indexOf(":") >= 0 ? field_tag.indexOf(":") : field_tag.indexOf("]");
+   string file_path = field_tag[0 .. end_of_file_path];
    
-   AttributeCrossReference acr;
-   acr.attribute = attrib_name;
+   FieldCrossReference fcr;
+   fcr.field = field_name;
+   fcr.tag = in_field_tag[in_field_tag.indexOf("[FIELD_REF: ") .. in_field_tag.indexOf("]") + 1];
    
-   if(attrib_tag.canFind(":"))
+   if(field_tag.canFind(":"))
    {
-      string routine_name = attrib_tag[attrib_tag.indexOf(":") + 1 .. attrib_tag.indexOf("]")];
-      acr.routine = MakeRoutine(file_path, routine_name);
+      string routine_name = field_tag[field_tag.indexOf(":") + 1 .. field_tag.indexOf("]")];
+      fcr.routine = MakeRoutine(file_path, routine_name);
    }
    else
    {
-      acr.routine = MakeRoutine(file_path, GetDefaultRoutine(PathF(file_path, routine_info)));
+      fcr.routine = MakeRoutine(file_path, GetDefaultRoutine(PathF(file_path, routine_info)));
    }
    
-   return acr;
+   return fcr;
 }
 
 BuildRoutine MakeRoutine(string file_path, string routine_name)
@@ -1281,6 +1367,41 @@ string PathF(string str, BuildRoutine routine)
       new_str = new_str[2 .. $];
 
    return routine.directory ~ new_str;
+}
+
+void JSONMapString(JSONValue json, void delegate(string str, int i) map_func)
+{
+   if(json.type() == JSON_TYPE.ARRAY)
+   {
+      int i = 0;
+   
+      foreach(JSONValue element_json; json.array)
+      {
+         if(element_json.type() == JSON_TYPE.STRING)
+         {
+            map_func(element_json.str(), i);
+            ++i;
+         }
+      }
+   }
+   else if(json.type() == JSON_TYPE.STRING)
+   {
+      map_func(json.str(), 0);
+   }
+}
+
+int JSONArraySize(JSONValue json)
+{
+   if(json.type() == JSON_TYPE.STRING)
+   {
+      return 1;
+   }
+   else if(json.type() == JSON_TYPE.ARRAY)
+   {
+      return json.array.length;
+   }
+   
+   return 0;
 }
 
 void CopyFile(string source, string destination)
@@ -1382,7 +1503,8 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
                           .replace("[OS_NAME]", build_info.platform.OS)
                           .replace("[PROJECT_NAME]", build_info.project_name)
                           .replace("[BUILD_DIRECTORY]", temp_dir)
-                          .replace("[OUTPUT_FILE]", output_file_name);
+                          .replace("[OUTPUT_FILE]", output_file_name)
+                          .replace("[DEPENDENCIES]", build_info.static_libraries);
      
          if(command_batch == "")
          {

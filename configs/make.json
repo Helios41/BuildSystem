@@ -13,7 +13,7 @@
          ["print", "before building!"],
          "build",
          ["print", "just built!"],
-         ["||", "DLTest Exports: [ATTRIB_REF: exports<-make_dl.json]"],
+         ["||", "DLTest Exports: [FIELD_REF: exports<-make_dl.json]"],
          ["print", "We're on an OS! ", "[OS: Windows] We're on Windows!"],
          ["[OS: Windows] print", "Printed on Windows"],
          ["[OS: Linux] print", "Printed on Linux"]
@@ -22,7 +22,8 @@
       [
          ["copy", "../dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
          ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json"],
-         ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"]
+         ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"],
+         "build"
       ],
       "type": "executable",
       "build" : "../test/",
@@ -30,10 +31,6 @@
       [
          "../helloworld.c",
          ["../", ".h"]
-      ],
-      "attributes": 
-      [
-         "dependencies"
       ],
       "dependencies": 
       [

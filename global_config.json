@@ -16,12 +16,8 @@
                "cd [BUILD_DIRECTORY]",
                "[ARCH: X86] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86",
                "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
-               "[OPT] cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [ATTRIB: dependencies]",
-               "[NOPT] cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [ATTRIB: dependencies]"
-            ],
-            "optional":
-            [
-               "dependencies"
+               "[OPT] cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]",
+               "[NOPT] cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]"
             ]
          },
          "dynamic": 
@@ -35,15 +31,11 @@
                "echo LIBRARY [PROJECT_NAME] > ./exports.def",
                "echo EXPORTS >> ./exports.def",
                "for /f %a in (\"[ATTRIB: exports]\") do ( echo \t %a >> ./exports.def )",
-               "[ARCH: OLD_OPT] cl /LD /O2 /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [ATTRIB: dependencies]",
-               "[ARCH: OLD_NOPT] cl /LD /Od /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [ATTRIB: dependencies]",
+               "[ARCH: OLD_OPT] cl /LD /O2 /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [DEPENDENCIES]",
+               "[ARCH: OLD_NOPT] cl /LD /Od /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [DEPENDENCIES]",
                "[OPT] cl /O2 /c*.c",
                "[NOPT] cl /Od /c *.c",
-               "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj *.lib [ATTRIB: dependencies]"
-            ],
-            "optional":
-            [
-               "dependencies"
+               "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj *.lib [DEPENDENCIES]"
             ]
          },
          "static": 

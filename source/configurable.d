@@ -1,7 +1,5 @@
 module BuildSystemConfigurable;
 
-const string GlobalConfigFilePath = "./configs/global_config.json";
-
 string GetOSName()
 {
    version(Windows) { return "Windows"; }

@@ -13,7 +13,8 @@ import std.conv;
 TODO:
    -Clean up code & comments
    -documentation
-   -dependencies using file ending
+   -specify additional platforms to build for, not native to the host (e.g. IOS or Android)
+   -Why is that folder created in the temporary directory?
 */
 
 /**
@@ -21,7 +22,7 @@ TODO:
 [FIELD_REF: _field_name_<-_file_:_routine_optional_]
 */
 
-const string GlobalConfigFilePath = "./global_config.json";
+string GlobalConfigFilePath = "./global_config.json";
 
 enum VersionType : string
 {
@@ -38,6 +39,7 @@ struct VersionInformation
    int patch;
    string appended;
    
+   string breakS = "_";
    VersionType type;
    
    bool is_versioned;
@@ -130,8 +132,23 @@ void main(string[] args)
                case "-patch":
                   version_type = VersionType.Patch;
                   break;
-                  
+               
+               case "-config":
+               {
+                  if(args.length > (i + 1))
+                  {
+                     GlobalConfigFilePath = args[++i];
+                  }
+                  else
+                  {
+                     writeln("Missing argument for option \"-config\"");
+                  }
+               }
+               break;
+               
                default:
+                  writeln("Unknown option ", argument);
+                  break;
             }
          }
          else
@@ -284,6 +301,18 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
                         ++index;
                      }
                   }
+                  else if(value.array.length == 3)
+                  {
+                     if((value[0].type() == JSON_TYPE.STRING) && 
+                        (value[1].type() == JSON_TYPE.STRING) &&
+                        (value[2].type() == JSON_TYPE.STRING))
+                     {
+                        build_info.source_folders[index].path = value[0].str();
+                        build_info.source_folders[index].begining = value[1].str();
+                        build_info.source_folders[index].ending = value[2].str();
+                        ++index;
+                     }
+                  }
                }
             }
          }
@@ -347,6 +376,16 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
          version_info.is_versioned = false;
       }
       
+      if(HasJSON(routine_json, "version_break"))
+      {
+         JSONValue version_break_json = routine_json["version_break"];
+         
+         if(version_break_json.type() == JSON_TYPE.STRING)
+         {
+            version_info.breakS = version_break_json.str();
+         }
+      }
+      
       if(HasJSON(routine_json, "optimized"))
       {
          if(routine_json["optimized"].type() == JSON_TYPE.TRUE)
@@ -385,21 +424,49 @@ void RunRoutine(string file_path, string routine_name, VersionType version_type 
       if(HasJSON(routine_json, "dependencies"))
       {
          JSONValue dependencies_json = routine_json["dependencies"];
-         
-         //TODO: file endings
          build_info.dependencies = new FileDescription[JSONArraySize(dependencies_json)];
-         JSONMapString(dependencies_json, (string dep_str_in, int i) 
+         
+         if(dependencies_json.type() == JSON_TYPE.STRING)
          {
-            if(AreTagsValid(dep_str_in, build_info))
+            build_info.dependencies[0].path = dependencies_json.str();
+         }
+         else if(dependencies_json.type() == JSON_TYPE.ARRAY)
+         {
+            int index = 0;
+         
+            foreach(JSONValue value; dependencies_json.array)
             {
-               string dep_str = ProcessTags(dep_str_in , build_info, routine_info);
-               
-               if(dep_str.canFind("/"))
-                  dep_str = PathF(dep_str, routine_info);
-               
-               build_info.dependencies[i].path = dep_str;  
+               if(value.type() == JSON_TYPE.STRING)
+               {
+                  build_info.dependencies[index].path = value.str();
+                  ++index;
+               }
+               else if(value.type() == JSON_TYPE.ARRAY)
+               {
+                  if(value.array.length == 2)
+                  {
+                     if((value[0].type() == JSON_TYPE.STRING) && (value[1].type() == JSON_TYPE.STRING))
+                     {
+                        build_info.dependencies[index].path = value[0].str();
+                        build_info.dependencies[index].ending = value[1].str();
+                        ++index;
+                     }
+                  }
+                  else if(value.array.length == 3)
+                  {
+                     if((value[0].type() == JSON_TYPE.STRING) && 
+                        (value[1].type() == JSON_TYPE.STRING) &&
+                        (value[2].type() == JSON_TYPE.STRING))
+                     {
+                        build_info.dependencies[index].path = value[0].str();
+                        build_info.dependencies[index].begining = value[1].str();
+                        build_info.dependencies[index].ending = value[2].str();
+                        ++index;
+                     }
+                  }
+               }
             }
-         });
+         }
       }
       else
       {
@@ -766,21 +833,31 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 3)
    {
       writeln("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2]);
+      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
+   }
+   else if(params.length == 4)
+   {
+      writeln("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
+      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
    }
 }
 
 void DeleteOperation(BuildRoutine routine_info, string[] params)
-{
-   if(params.length == 2)
-   {
-      writeln("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
-      DeleteFolder(PathF(params[0], routine_info), params[1]);
-   }
-   else if(params.length == 1)
+{  
+   if(params.length == 1)
    {
       writeln("\tDelete ", PathF(params[0], routine_info), " -> /dev/null");
       DeleteFile(PathF(params[0], routine_info));
+   }
+   else if(params.length == 2)
+   {
+      writeln("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
+      DeleteFolder(PathF(params[0], routine_info), "", params[1]);
+   }
+   else if(params.length == 3)
+   {
+      writeln("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
+      DeleteFolder(PathF(params[0], routine_info), params[1], params[2]);
    }
 }
 
@@ -795,7 +872,13 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 3)
    {
       writeln("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2]);
+      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
+      DeleteFolder(PathF(params[0], routine_info), PathF(params[1], routine_info));
+   }
+   else if(params.length == 4)
+   {
+      writeln("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
+      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
       DeleteFolder(PathF(params[0], routine_info), PathF(params[1], routine_info));
    }
 }
@@ -1426,7 +1509,7 @@ void CopyFile(string source, string destination)
    } catch {} 
 }
 
-void CopyFolder(string source, string destination, string ending = "")
+void CopyFolder(string source, string destination, string begining = "", string ending = "")
 {
    try
    {
@@ -1434,9 +1517,14 @@ void CopyFolder(string source, string destination, string ending = "")
       {
          foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
          {
-            if(e.isFile() && e.name().endsWith(ending))
+            string entry_path = e.name()[e.name().lastIndexOf("/") + 1 .. $];
+            
+            //TODO: remove once stuff is fixed
+            if((begining != ""))
+               writeln(entry_path);
+            
+            if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
                CopyFile(e.name(), destination ~ e.name().replace(source, ""));
-               
          }
       }
    } catch {}
@@ -1452,7 +1540,7 @@ void DeleteFile(string path)
    } catch {} 
 }
 
-void DeleteFolder(string path, string ending = "")
+void DeleteFolder(string path, string begining = "", string ending = "")
 {
    try
    {
@@ -1460,9 +1548,10 @@ void DeleteFolder(string path, string ending = "")
       {
          foreach(DirEntry e; dirEntries(path, SpanMode.shallow))
          {
-            if(e.isFile() && e.name().endsWith(ending))
+            string entry_path = e.name()[e.name().lastIndexOf("/") + 1 .. $];
+         
+            if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
                DeleteFile(e.name());
-               
          }
       }
    } catch {}
@@ -1473,8 +1562,14 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    string temp_dir = routine_info.directory ~ build_info.project_name ~ "_" ~ routine_info.name ~ "_" ~ randomUUID().toString();
    string[] commands = GetLanguageCommands(GlobalConfigFilePath, build_info.language, build_info.type);
    string file_ending = GetLanguageFileEnding(GlobalConfigFilePath, build_info.language, build_info.type);
-   string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
-   string output_file_name = build_info.project_name ~ (version_info.is_versioned ? " " ~ version_string : "");
+   
+   string version_string = to!string(version_info.major) ~ version_info.breakS
+                           ~ to!string(version_info.minor) ~ version_info.breakS
+                           ~ to!string(version_info.patch) ~ version_info.breakS
+                           ~ version_info.appended;
+                           
+   string output_file_name = build_info.project_name ~ 
+                             (version_info.is_versioned ? version_info.breakS ~ version_string : "");
    
    mkdirRecurse(temp_dir);
    
@@ -1494,15 +1589,30 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
                        .replace("[PROJECT_NAME]", build_info.project_name);
          
          CopyFile(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
-         CopyFolder(PathF(source.path, routine_info), temp_dir ~ "/", source.ending);
+         CopyFolder(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
       }
    }
 
    string dependencies = "";
    foreach(FileDescription dep; build_info.dependencies)
    {
-      //TODO: file endings
-      dependencies = dependencies ~ " " ~ dep.path;
+      if(AreTagsValid(dep.path, build_info))
+      {
+         dep.path = ProcessTags(dep.path, build_info, routine_info)
+                    .replace("[ARCH_NAME]", build_info.platform.arch)
+                    .replace("[OS_NAME]", build_info.platform.OS)
+                    .replace("[PROJECT_NAME]", build_info.project_name);
+                  
+         if(exists(PathF(dep.path, routine_info)))
+         {
+            CopyFile(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
+            CopyFolder(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+         }
+         else
+         {
+            dependencies = dependencies ~ " " ~ dep.path;
+         }
+      }
    }
    
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
@@ -1536,5 +1646,6 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    
    CopyFile(temp_dir ~ "/" ~ build_info.project_name ~ file_ending, PathF(output_folder, routine_info) ~ "/" ~ output_file_name ~ file_ending);
    
-   rmdirRecurse(temp_dir);
+   //TODO: re-enable!
+   //rmdirRecurse(temp_dir);
 }

@@ -1,0 +1,12 @@
+{
+   "default": "Make",
+   "Make":
+   {
+      "language": "C",
+      "type": "static",
+      "build": "../static_lib",
+      "source": "../static_lib.c",
+      "project": "static_lib",
+      "version": [0, 0, 0]
+   }
+}

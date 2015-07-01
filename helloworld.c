@@ -2,11 +2,14 @@
 #include <Windows.h>
 
 typedef int (*add_integers_foo_t)(int num1, int num2);
+void print_a_message(void);
 
 int main()
 {
   MessageBox(NULL, TEXT("Text"), TEXT("Title"), MB_ICONWARNING);
   printf("Hello world\n");
+  
+  print_a_message();
   
   char LibraryPath[250];
   

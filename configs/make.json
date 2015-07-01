@@ -6,6 +6,7 @@
       "operations":
       [
          ["call", "./make_dl.json"],
+         ["||", "./make_lib.json"],
          ["copy", "../dub.json", "../bob.json"],
          ["||", "../", "../test/", ".random"],         
          ["delete", "../toremove.txt"],
@@ -22,6 +23,7 @@
       [
          ["copy", "../dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
          ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json"],
+         ["||", "../", "[OUTPUT_DIRECTORY]/djson/", "d", ".json"],
          ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"],
          "build"
       ],
@@ -35,11 +37,13 @@
       "dependencies": 
       [
          "[OS: Windows] User32.lib",
-         "[OS: Fake_Linux] SomeLib.so"
+         "[OS: Fake_Linux] SomeLib.so",
+         ["../static_lib/[OS_NAME]_[ARCH_NAME]", "static_lib", ".lib"]
       ],
       "optimized": false,
       "project": "Test",
-      "version": [0, 0, 0, "test"]
+      "version": [0, 0, 0, "test"],
+      "version_break": "_;-)_"
    },
    "MoveBob":
    {

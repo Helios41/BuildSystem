@@ -17,7 +17,16 @@
          ["||", "DLTest Exports: [FIELD_REF: exports<-make_dl.json]"],
          ["print", "We're on an OS! ", "[OS: Windows] We're on Windows!"],
          ["[OS: Windows] print", "Printed on Windows"],
-         ["[OS: Linux] print", "Printed on Linux"]
+         ["[OS: Linux] print", "Printed on Linux"],
+         ["print", "We're on an OS! ", {"if": "OS=Windows", "then": "We're on Windows!"}],
+         {
+            "if": "OS=Windows",
+            "then": ["print", "Printed on windows"]
+         },
+         {
+            "if": "OS=Linux",
+            "then": ["print", "Printed on Linux"]
+         }
       ],
       "per-operations":
       [
@@ -38,7 +47,7 @@
       [
          "[OS: Windows] User32.lib",
          "[OS: Fake_Linux] SomeLib.so",
-         ["../static_lib/[OS_NAME]_[ARCH_NAME]", "static_lib", ".lib"]
+         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".lib"]
       ],
       "optimized": false,
       "project": "Test",

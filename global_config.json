@@ -4,6 +4,10 @@
       "X86_64",
       "X86"
    ],
+   "platforms":
+   [
+      "Windows"
+   ],
    "languages":
    {
       "C":

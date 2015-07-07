@@ -6,7 +6,8 @@
    ],
    "platforms":
    [
-      "Windows"
+      "Windows", ["X86_64", "X86"],
+      "Android", ["ARM"]
    ],
    "languages":
    {

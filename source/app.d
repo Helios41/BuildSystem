@@ -16,11 +16,12 @@ TODO:
    -documentation
    -specify additional platforms to build for, not native to the host (e.g. IOS or Android)
    -Why is that folder created in the temporary directory?
-   -remove extra copies of a dependency from the dependency list 
-   ("User32 User32" -> "User32")
+   -remove extra copies of a dependency from the dependency list ("User32 User32" -> "User32")
    -option to specify what architectures to build for
    -replace conditional tags with "if then else" blocks
    -specify platforms in global config, no more configurable source file
+   -copy entire folder, not just contents
+   -FIX!!! GetAttribString crash
 */
 
 /**
@@ -91,6 +92,12 @@ struct FieldCrossReference
    string field;
    string tag;
    BuildRoutine routine;
+}
+
+struct CommandInformation
+{
+   string command;
+   string[] params;
 }
 
 void main(string[] args)
@@ -485,7 +492,7 @@ void RunRoutine(string file_path, string routine_name, string global_config_path
    }
 }
 
-void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
+void ExecuteOperationsOLD(BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
 {
    JSONValue routine_json = GetRoutineJSON(routine);
 
@@ -612,6 +619,94 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                default:
                   writeln("Unknown Operation: ", operation_token);
             }
+         }
+      }
+      
+      if(!has_built)
+         BuildOperation(routine, build_info, version_info);
+   }
+}
+
+void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
+{
+   JSONValue routine_json = GetRoutineJSON(routine);
+
+   if(!HasJSON(routine_json, "operations"))
+   {
+      BuildOperation(routine, build_info, version_info);
+      return;
+   }
+   
+   JSONValue operations_json = routine_json["operations"];
+   
+   if(operations_json.type() == JSON_TYPE.ARRAY)
+   {
+      string last_operation_token = "";
+      bool has_built = false;
+      CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json);
+      
+      WriteMsg("Executing Commands:");
+      
+      foreach(CommandInformation command; commands)
+      {
+         string operation_token = command.command;
+         string[] operation_params = command.params;
+         
+         if((operation_token !=  "=") && (operation_token !=  "||"))
+         {
+            last_operation_token = operation_token;
+         }
+         else
+         {
+            operation_token = last_operation_token;
+         }
+         
+         switch(operation_token)
+         {
+            case "move":
+               MoveOperation(routine, operation_params);
+               break;
+            
+            case "delete":
+               DeleteOperation(routine, operation_params);
+               break;
+            
+            case "copy":
+               CopyOperation(routine, operation_params);
+               break;
+            
+            case "call":
+               CallOperation(routine, operation_params);
+               break;
+            
+            case "cmd":
+               CommandOperation(routine, operation_params);
+               break;
+            
+            case "replace":
+               ReplaceOperation(routine, operation_params);
+               break;
+            
+            case "build":
+            {
+               BuildOperation(routine, build_info, version_info);
+               has_built = true;
+            }
+            break;
+            
+            case "print":
+            {
+               string to_print = "";
+               foreach(string args; operation_params)
+               {
+                  to_print = to_print ~ args;
+               }
+               writeln("[print] ", to_print);
+            }
+            break;
+            
+            default:
+               writeln("Unknown Operation: ", operation_token);
          }
       }
       
@@ -840,12 +935,12 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 3)
    {
       WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
+      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
    }
    else if(params.length == 4)
    {
       WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
    }
 }
 
@@ -859,12 +954,12 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 2)
    {
       WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
-      DeleteFolder(PathF(params[0], routine_info), "", params[1]);
+      DeleteFolderContents(PathF(params[0], routine_info), "", params[1]);
    }
    else if(params.length == 3)
    {
       WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
-      DeleteFolder(PathF(params[0], routine_info), params[1], params[2]);
+      DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2]);
    }
 }
 
@@ -879,14 +974,14 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 3)
    {
       WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
-      DeleteFolder(PathF(params[0], routine_info), PathF(params[1], routine_info));
+      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
+      DeleteFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info));
    }
    else if(params.length == 4)
    {
       WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-      CopyFolder(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
-      DeleteFolder(PathF(params[0], routine_info), PathF(params[1], routine_info));
+      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+      DeleteFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info));
    }
 }
 
@@ -1090,24 +1185,38 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
    if(HasJSON(file_json, "languages"))
    {
       JSONValue languages_json = file_json["languages"];
+      
       if(HasJSON(languages_json, language_name))
       {
          JSONValue language_json = languages_json[language_name];
          return language_json;
       }
-      else
-      {
-         writeln("Language config missing  for language \"", language_name, "\"");
-         exit(-1);
-      }
-   }
-   else
-   {
-      writeln("Language config missing \"language\" segment");
-      exit(-1);
    }
    
+   writeln("Language config missing for language \"", language_name, "\"");
+   exit(-1);
+   
    return JSONValue.init; 
+}
+
+JSONValue GetLanguageCommandTag(string file_path, string language_name, string build_type)
+{
+   WriteMsg("Loading language ", language_name, " commands (", build_type, ") from ", file_path);
+   
+   JSONValue language_json = GetLanguageJSON(file_path, language_name);
+   
+   if(HasJSON(language_json, build_type))
+   {
+      JSONValue build_type_json = language_json[build_type];
+      
+      if(HasJSON(build_type_json, "commands"))
+         return build_type_json["commands"];
+   }
+   
+   writeln("Language config missing commands for language ", language_name, "(", build_type, ")");
+   exit(-1);
+   
+   return JSONValue.init;
 }
 
 string[] GetLanguageCommands(string file_path, string language_name, string build_type)
@@ -1543,6 +1652,8 @@ string GetAttribString(BuildRoutine routine_info,
                        VersionInformation version_info,
                        string attrib_name)
 {
+   //This crashes when loading commands from the global config FIX!!
+   
    string attrib_value = "";
 
    JSONValue routine_json = GetRoutineJSON(routine_info);
@@ -1559,7 +1670,10 @@ string GetAttribString(BuildRoutine routine_info,
       }
    }
    
-   return attrib_value[1 .. $];
+   if(attrib_value.length > 0)
+      return attrib_value[1 .. $];
+      
+   return "";
 }
 
 bool HandleConditional(BuildRoutine routine_info, 
@@ -1567,7 +1681,7 @@ bool HandleConditional(BuildRoutine routine_info,
                        VersionInformation version_info,
                        string condit_str)
 {
-   string conditional = condit_str[0 .. condit_str.indexOf("=")];
+   string conditional = condit_str[0 .. condit_str.indexOf("=") + 1];
    string value = condit_str[condit_str.indexOf("=") + 1 .. $];
    
    switch(conditional)
@@ -1730,10 +1844,11 @@ void LoadStringArrayFromTag_internal(BuildRoutine routine_info,
 string[] LoadStringArrayFromTag(BuildRoutine routine_info, 
                                 BuildInformation build_info,
                                 VersionInformation version_info,
-                                JSONValue json)
+                                JSONValue json,
+                                bool DEBUGMODE = false)
 {
    Array!string sarray = Array!string();
-
+   
    if(json.type() == JSON_TYPE.ARRAY)
    {
       foreach(JSONValue json_value; json.array)
@@ -1769,10 +1884,62 @@ string[] LoadStringArrayFromTag(BuildRoutine routine_info,
       return output;
    }
    
-   writeln("ERROR! stopping!");
-   writeln("Could load string array from tag");
-   exit(-1);
+   if(DEBUGMODE)
+   {
+      writeln("ERROR! stopping!");
+      writeln("Could load string array from tag");
+      writeln("JSON TYPE=", json.type());
+      writeln(json);
+   }
+   
+   return null;
+}
 
+CommandInformation[] LoadCommandsFromTag(BuildRoutine routine_info, 
+                                         BuildInformation build_info,
+                                         VersionInformation version_info,
+                                         JSONValue json)
+{
+   Array!CommandInformation command_list = Array!CommandInformation();
+
+   if(json.type() == JSON_TYPE.ARRAY)
+   {
+      foreach(JSONValue json_value; json.array)
+      {
+         CommandInformation command;
+      
+         if(json_value.type() == JSON_TYPE.STRING)
+         {
+            command.command = json_value.str();
+         }
+         else
+         {
+            string[] strings = LoadStringArrayFromTag(routine_info, build_info, version_info, json_value);
+            
+            if(strings == null)
+               continue;
+            
+            command.command = strings[0];
+            command.params = strings[1 .. $];
+         }
+         
+         command_list.insert(command);
+      }
+   }
+
+   if(command_list.length > 0)
+   {
+      CommandInformation[] output = new CommandInformation[command_list.length];
+      int index = 0;
+      
+      foreach(CommandInformation cmd; command_list)
+      {
+         output[index++] = cmd;
+      }
+      
+      return output;
+   }
+   
    return null;
 }
 
@@ -1790,7 +1957,7 @@ void CopyFile(string source, string destination)
    } catch {} 
 }
 
-void CopyFolder(string source, string destination, string begining = "", string ending = "")
+void CopyFolderContents(string source, string destination, string begining = "", string ending = "")
 {
    try
    {
@@ -1817,7 +1984,7 @@ void DeleteFile(string path)
    } catch {} 
 }
 
-void DeleteFolder(string path, string begining = "", string ending = "")
+void DeleteFolderContents(string path, string begining = "", string ending = "")
 {
    try
    {
@@ -1870,7 +2037,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
                        .replace("[PROJECT_NAME]", build_info.project_name);
          
          CopyFile(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
-         CopyFolder(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+         CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
       }
    }
 
@@ -1887,7 +2054,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          if(exists(PathF(dep.path, routine_info)))
          {
             CopyFile(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
-            CopyFolder(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+            CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
          }
          else
          {
@@ -1899,6 +2066,31 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
 
    string command_batch = "";
+   
+   string[] command_templates = LoadStringArrayFromTag(routine_info,
+                                                       build_info,
+                                                       version_info,
+                                                       GetLanguageCommandTag(routine_info.global_config_path, build_info.language, build_info.type),
+                                                       true);
+   
+   /*
+   foreach(string command_template; commands)
+   {
+      writeln(command_template);
+   
+      string command = command_template;
+   
+      if(command_batch == "")
+      {
+         command_batch = command_batch ~ " ( " ~ command ~ " )";
+      }
+      else
+      {
+         command_batch = command_batch ~ " && ( " ~ command ~ " )";
+      }
+   }
+   */
+   
    
    foreach(string command_template; commands)
    {
@@ -1922,6 +2114,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          }
       }
    }
+   
    
    system(toStringz(command_batch));
    

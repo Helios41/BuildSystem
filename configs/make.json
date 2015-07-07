@@ -15,9 +15,6 @@
          "build",
          ["print", "just built!"],
          ["||", "DLTest Exports: [FIELD_REF: exports<-make_dl.json]"],
-         ["print", "We're on an OS! ", "[OS: Windows] We're on Windows!"],
-         ["[OS: Windows] print", "Printed on Windows"],
-         ["[OS: Linux] print", "Printed on Linux"],
          ["print", "We're on an OS! ", {"if": "OS=Windows", "then": "We're on Windows!"}],
          {
             "if": "OS=Windows",

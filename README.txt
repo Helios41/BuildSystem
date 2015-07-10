@@ -3,7 +3,7 @@ Custom Build System:
    -easy (to a degree)
    -multi-platform & multi-architecture
 
-Feature complete build is available.
+Feature complete build is available... sometimes...
 Still being actively developed, use at your own risk.
 
 Documentation:

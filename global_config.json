@@ -1,13 +1,7 @@
 {
-   "architectures": 
-   [
-      "X86_64",
-      "X86"
-   ],
    "platforms":
    [
-      "Windows", ["X86_64", "X86"],
-      "Android", ["ARM"]
+      "Windows", ["X86_64", "X86"]
    ],
    "languages":
    {
@@ -19,10 +13,19 @@
             "commands":
             [  
                "cd [BUILD_DIRECTORY]",
-               "[ARCH: X86] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86",
-               "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
-               "[OPT] cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]",
-               "[NOPT] cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]"
+               {
+                  "if": "ARCH=X86",
+                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86"
+               },
+               {
+                  "if": "ARCH=X86_64",
+                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64"
+               },
+               {
+                  "if": "OPT=true",
+                  "then": "cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]",
+                  "else": "cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]"
+               }
             ]
          },
          "dynamic": 
@@ -31,15 +34,22 @@
             "commands":
             [
                "cd [BUILD_DIRECTORY]",
-               "[ARCH: X86] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86",
-               "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
+               {
+                  "if": "ARCH=X86",
+                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86"
+               },
+               {
+                  "if": "ARCH=X86_64",
+                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64"
+               },
                "echo LIBRARY [PROJECT_NAME] > ./exports.def",
                "echo EXPORTS >> ./exports.def",
                "for /f %a in (\"[ATTRIB: exports]\") do ( echo \t %a >> ./exports.def )",
-               "[ARCH: OLD_OPT] cl /LD /O2 /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [DEPENDENCIES]",
-               "[ARCH: OLD_NOPT] cl /LD /Od /Fe[PROJECT_NAME] /DEF:exports.def *.c /link *.lib [DEPENDENCIES]",
-               "[OPT] cl /O2 /c*.c",
-               "[NOPT] cl /Od /c *.c",
+               {
+                  "if": "OPT=true",
+                  "then": "cl /O2 /c *.c",
+                  "else": "cl /Od /c *.c"
+               },
                "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj *.lib [DEPENDENCIES]"
             ]
          },
@@ -49,10 +59,19 @@
             "commands":
             [
                "cd [BUILD_DIRECTORY]",
-               "[ARCH: X86] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86",
-               "[ARCH: X86_64] \"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64",
-               "[OPT] cl /O2 /c *.c",
-               "[NOPT] cl /Od /c *.c",
+               {
+                  "if": "ARCH=X86",
+                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86"
+               },
+               {
+                  "if": "ARCH=X86_64",
+                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64"
+               },
+               {
+                  "if": "OPT=true",
+                  "then": "cl /O2 /c *.c",
+                  "else": "cl /Od /c *.c"
+               },
                "lib /out:[PROJECT_NAME].lib *.obj"
             ]
          }

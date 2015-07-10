@@ -5,7 +5,6 @@ import std.json;
 import std.array;
 import std.algorithm.searching;
 import std.c.stdlib;
-import BuildSystemConfigurable;
 import std.uuid;
 import std.conv;
 import std.container;
@@ -14,14 +13,10 @@ import std.container;
 TODO:
    -Clean up code & comments
    -documentation
-   -specify additional platforms to build for, not native to the host (e.g. IOS or Android)
    -Why is that folder created in the temporary directory?
    -remove extra copies of a dependency from the dependency list ("User32 User32" -> "User32")
-   -option to specify what architectures to build for
-   -replace conditional tags with "if then else" blocks
-   -specify platforms in global config, no more configurable source file
+   -option to specify what architectures to build for on a per project basis
    -copy entire folder, not just contents
-   -FIX!!! GetAttribString crash
 */
 
 /**
@@ -237,7 +232,7 @@ void RunRoutine(string file_path, string routine_name, string global_config_path
       build_info.project_name = "";
       build_info.platform.optimized = true;
       build_info.platform.arch = "";
-      build_info.platform.OS = GetOSName();
+      build_info.platform.OS = "";
       build_info.dependencies = null;
       
       VersionInformation version_info;
@@ -525,7 +520,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
          {
             operation_token = last_operation_token;
          }
-         
+      
          switch(operation_token)
          {
             case "move":
@@ -583,7 +578,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
 void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
 {
    JSONValue routine_json = GetRoutineJSON(routine);
-   string version_string = to!string(version_info.major) ~ "_" ~ to!string(version_info.minor) ~ "_" ~ to!string(version_info.patch) ~ "_" ~ version_info.appended;
+   string version_string = GetVersionString(version_info);
    
    if(!HasJSON(routine_json, "per-operations"))
    {
@@ -598,14 +593,14 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
       bool specifies_build = false;
       bool has_built = false;
       
-      foreach(JSONValue operation_json; operations_json.array)
+      //TODO: replace [OUTPUT_DIRECTORY]
+      CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json);
+      
+      foreach(CommandInformation command; commands)
       {
-         if(operation_json.type() == JSON_TYPE.STRING)
+         if(command.command == "build")
          {
-            if(operation_json.str() == "build")
-            {
-               specifies_build = true;
-            }
+            specifies_build = true;
          }
       }
       
@@ -619,140 +614,74 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
    
       WriteMsg("Executing Per Build Commands:");
       
-      foreach(JSONValue operation_json; operations_json.array)
-      { 
-         if(operation_json.type() == JSON_TYPE.ARRAY)
+      foreach(CommandInformation command; commands)
+      {
+         string operation_token = command.command;
+         string[] operation_params = command.params;
+         
+         if((operation_token !=  "=") && (operation_token !=  "||"))
          {
-            string operation_token = operation_json[0].str();
-            
-            if((operation_token !=  "=") && (operation_token !=  "||"))
-            {
-               last_operation_token = operation_token;
-            }
-            else
-            {
-               operation_token = last_operation_token;
-            }
-            
-            if(AreTagsValid(operation_token, build_info, routine))
-            {
-               operation_token = ProcessTags(operation_token, build_info, routine);
-            }
-            else
-            {
-               continue;
-            }
-            
-            string[] operation_params = new string[operation_json.array.length - 1];
-            
-            for(int i = 1; i < operation_json.array.length; ++i)
-            {
-               if(operation_json[i].type() == JSON_TYPE.STRING)
-               {
-                  if(AreTagsValid(operation_json[i].str(), build_info, routine))
-                  {
-                     operation_params[i - 1] = ProcessTags(operation_json[i].str(), build_info, routine)
-                     .replace("[OUTPUT_DIRECTORY]", output_directory)
-                     .replace("[ARCH_NAME]", build_info.platform.arch)
-                     .replace("[OS_NAME]", build_info.platform.OS)
-                     .replace("[PROJECT_NAME]", build_info.project_name);
-                                               
-                     if(version_info.is_versioned)
-                     {
-                        operation_params[i - 1] = operation_params[i - 1]
-                        .replace("[MAJOR_VERSION]", to!string(version_info.major))
-                        .replace("[MINOR_VERSION]", to!string(version_info.minor))
-                        .replace("[PATCH_VERSION]", to!string(version_info.patch))
-                        .replace("[APPENDED_VERSION]", version_info.appended)
-                        .replace("[VERSION]", version_string);
-                     }
-                  }
-               }
-            }
-            
-            switch(operation_token)
-            {
-               case "move":
-                  MoveOperation(routine, operation_params);
-                  break;
-               
-               case "delete":
-                  DeleteOperation(routine, operation_params);
-                  break;
-               
-               case "copy":
-                  CopyOperation(routine, operation_params);
-                  break;
-               
-               case "call":
-                  CallOperation(routine, operation_params);
-                  break;
-               
-               case "cmd":
-                  CommandOperation(routine, operation_params);
-                  break;
-               
-               case "replace":
-                  ReplaceOperation(routine, operation_params);
-                  break;
-               
-               case "print":
-               {
-                  string to_print = "";
-                  foreach(string args; operation_params)
-                  {
-                     to_print = to_print ~ args;
-                  }
-                  writeln("[print] ", to_print);
-               }
-               break;
-               
-               default:
-                  writeln("Unknown Operation: ", operation_token);
-            }
+            last_operation_token = operation_token;
          }
-         else if(operation_json.type() == JSON_TYPE.STRING)
+         else
          {
-            string operation_token = operation_json.str();
-                  
-            if((operation_token !=  "=") && (operation_token !=  "||"))
-            {
-               last_operation_token = operation_token;
-            }
-            else
-            {
-               operation_token = last_operation_token;
-            }
-                  
-            if(AreTagsValid(operation_token, build_info, routine))
-            {
-               operation_token = ProcessTags(operation_token, build_info, routine);
-            }
-            else
-            {
-               continue;
-            }
-                  
-            switch(operation_token)
-            {
-               case "build":
-               {
-                  if(!has_built)
-                  {
-                     has_built = true;
-                     WriteMsg("\tBuilding...");
-                     Build(output_directory, routine, build_info, version_info);
-                  }
-                  else
-                  {
-                     WriteMsg("Already built!");
-                  }
-               }
+            operation_token = last_operation_token;
+         }
+         
+         switch(operation_token)
+         {
+            case "move":
+               MoveOperation(routine, operation_params);
                break;
-               
-               default:
-                  writeln("Unknown Operation: ", operation_token);
+            
+            case "delete":
+               DeleteOperation(routine, operation_params);
+               break;
+            
+            case "copy":
+               CopyOperation(routine, operation_params);
+               break;
+            
+            case "call":
+               CallOperation(routine, operation_params);
+               break;
+            
+            case "cmd":
+               CommandOperation(routine, operation_params);
+               break;
+            
+            case "replace":
+               ReplaceOperation(routine, operation_params);
+               break;
+            
+            case "build":
+            {
+               if(!has_built)
+               {
+                  has_built = true;
+                  WriteMsg("\tBuilding...");
+                  Build(output_directory, routine, build_info, version_info);
+               }
+               else
+               {
+                  WriteMsg("Already built!");
+               }
             }
+            break;
+            
+            case "print":
+            {
+               string to_print = "";
+               foreach(string args; operation_params)
+               {
+                  to_print = to_print ~ args;
+               }
+               writeln("[print] ", to_print);
+            }
+            break;
+            
+            default:
+               writeln("Unknown Operation: ", operation_token);
          }
       }
    }
@@ -772,20 +701,25 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
       }
       
       JSONValue routine_json = GetRoutineJSON(routine);
-      string[] arch_names = GetArchitectureNames(routine.global_config_path);
+      string[int][string] platforms = GetAvailablePlatforms(routine.global_config_path);
       
-      foreach(string arch_name; arch_names)
+      foreach(string OS, string[int] archs; platforms)
       {
-         build_info.platform.arch = arch_name;
-         string output_directory_noslash = build_info.build_folder.endsWith("/") ? build_info.build_folder[0 .. build_info.build_folder.lastIndexOf("/")] : build_info.build_folder;
-         string output_folder = output_directory_noslash ~ "/" ~ build_info.platform.OS ~ "_" ~ build_info.platform.arch;
-         
-         if(exists(PathF(output_folder, routine)))
+         foreach(string arch; archs)
          {
-            rmdirRecurse(PathF(output_folder, routine));
+            build_info.platform.arch = arch;
+            build_info.platform.OS = OS;
+            
+            string output_directory_noslash = build_info.build_folder.endsWith("/") ? build_info.build_folder[0 .. build_info.build_folder.lastIndexOf("/")] : build_info.build_folder;
+            string output_folder = output_directory_noslash ~ "/" ~ build_info.platform.OS ~ "_" ~ build_info.platform.arch;
+            
+            if(exists(PathF(output_folder, routine)))
+            {
+               rmdirRecurse(PathF(output_folder, routine));
+            }
+            
+            ExecutePerOperations(output_folder, routine, build_info, version_info);
          }
-         
-         ExecutePerOperations(output_folder, routine, build_info, version_info);
       }
    }
 }
@@ -1180,10 +1114,8 @@ string GetLanguageFileEnding(string file_path, string language_name, string buil
    return null;
 }
 
-string[] GetArchitectureNames(string file_path)
+string[int][string] GetAvailablePlatforms(string file_path)
 {
-   WriteMsg("Loading available architectures from ", file_path);
-
    if(!isFile(file_path))
    {
       writeln(file_path ~ " not found!");
@@ -1191,32 +1123,45 @@ string[] GetArchitectureNames(string file_path)
    }
    
    JSONValue file_json = parseJSON(readText(file_path));
-   string[] arch_names = null;
    
-   if(HasJSON(file_json, "architectures"))
+   string[int][string] platforms;
+   
+   if(HasJSON(file_json, "platforms"))
    {
-      if(file_json["architectures"].type() == JSON_TYPE.ARRAY)
+      JSONValue platforms_json = file_json["platforms"];
+      
+      if(platforms_json.type() == JSON_TYPE.ARRAY)
       {
-         JSONValue arch_array_json = file_json["architectures"];
-         arch_names = new string[arch_array_json.array.length];
-         int index = 0;
-         
-         foreach(JSONValue element_json; arch_array_json.array)
+         string current_platform = "";
+      
+         foreach(JSONValue platform_value; platforms_json.array)
          {
-            if(element_json.type() == JSON_TYPE.STRING)
+            if(platform_value.type() == JSON_TYPE.STRING)
             {
-               arch_names[index++] = element_json.str();
+               current_platform = platform_value.str();
+            }
+            else if(platform_value.type() == JSON_TYPE.ARRAY)
+            {
+               if(current_platform != "")
+               {
+                  int index = 0;
+                  
+                  foreach(JSONValue arch_json; platform_value.array)
+                  {
+                     if(arch_json.type() == JSON_TYPE.STRING)
+                     {
+                        platforms[current_platform][index++] = arch_json.str();
+                     }
+                  }
+                  
+                  current_platform = "";
+               }
             }
          }
       }
    }
-   else 
-   {
-      writeln("No available architectures!");
-      exit(-1);
-   }
    
-   return arch_names;
+   return platforms;
 }
 
 bool IsProperPlatform(string tag, PlatformInformation platform)
@@ -1517,8 +1462,7 @@ string GetAttribString(BuildRoutine routine_info,
                        VersionInformation version_info,
                        string attrib_name)
 {
-   //This crashes when loading commands from the global config FIX!!
-   
+   WriteMsg("Loading ", attrib_name, " from ", routine_info.path);
    string attrib_value = "";
 
    JSONValue routine_json = GetRoutineJSON(routine_info);
@@ -1527,7 +1471,9 @@ string GetAttribString(BuildRoutine routine_info,
    {
       JSONValue attrib_json = routine_json[attrib_name];
       
+      SetAttribGroup(attrib_name);
       string[] attribs = LoadStringArrayFromTag(routine_info, build_info, version_info, attrib_json);
+      ClearAttribGroup();
       
       foreach(string str; attribs)
       {
@@ -1572,6 +1518,19 @@ bool HandleConditional(BuildRoutine routine_info,
    return false;
 }
 
+//TODO: remove, this is temporary
+string str_attrib_group = "";
+
+void SetAttribGroup(string attrib_group)
+{
+   str_attrib_group = attrib_group;
+}
+
+void ClearAttribGroup()
+{
+   str_attrib_group = "";
+} 
+
 string ProcessTag(BuildRoutine routine_info, 
                   BuildInformation build_info,
                   VersionInformation version_info,
@@ -1591,8 +1550,11 @@ string ProcessTag(BuildRoutine routine_info,
    
    foreach(string attrib_name, string[] attrib_array; build_info.attributes)
    {
-      new_str = new_str.replace("[ATTRIB: " ~ attrib_name ~ "]", 
-                                GetAttribString(routine_info, build_info, version_info, attrib_name));
+      if(attrib_name != str_attrib_group)
+      {
+         new_str = new_str.replace("[ATTRIB: " ~ attrib_name ~ "]",
+                                   GetAttribString(routine_info, build_info, version_info, attrib_name));
+      }
    }
    
    foreach(string optional_attrib_name; GetLanguageOptionalAttribs(routine_info.global_config_path, build_info.language, build_info.type))
@@ -1709,8 +1671,7 @@ void LoadStringArrayFromTag_internal(BuildRoutine routine_info,
 string[] LoadStringArrayFromTag(BuildRoutine routine_info, 
                                 BuildInformation build_info,
                                 VersionInformation version_info,
-                                JSONValue json,
-                                bool DEBUGMODE = false)
+                                JSONValue json)
 {
    Array!string sarray = Array!string();
    
@@ -1747,14 +1708,6 @@ string[] LoadStringArrayFromTag(BuildRoutine routine_info,
       }
       
       return output;
-   }
-   
-   if(DEBUGMODE)
-   {
-      writeln("ERROR! stopping!");
-      writeln("Could load string array from tag");
-      writeln("JSON TYPE=", json.type());
-      writeln(json);
    }
    
    return null;
@@ -1805,6 +1758,14 @@ CommandInformation[] LoadCommandsFromTag(BuildRoutine routine_info,
       return output;
    }
    
+   return null;
+}
+
+FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info, 
+                                              BuildInformation build_info,
+                                              VersionInformation version_info,
+                                              JSONValue json)
+{
    return null;
 }
 
@@ -1877,7 +1838,6 @@ void WriteMsg(T...)(T args)
 void Build(string output_folder, BuildRoutine routine_info, BuildInformation build_info, VersionInformation version_info)
 {
    string temp_dir = routine_info.directory ~ build_info.project_name ~ "_" ~ routine_info.name ~ "_" ~ randomUUID().toString();
-   string[] commands = GetLanguageCommands(routine_info.global_config_path, build_info.language, build_info.type);
    string file_ending = GetLanguageFileEnding(routine_info.global_config_path, build_info.language, build_info.type);
    string version_string = GetVersionString(version_info);
                            
@@ -1890,6 +1850,40 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    {
       mkdirRecurse(PathF(output_folder, routine_info));
    }
+   
+   JSONValue routine_json = GetRoutineJSON(routine_info);
+   string dependencies = "";
+   
+   /*
+   if(HasJSON(routine_json, "source"))
+   {
+      FileDescription[] source_folders = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["source"]);
+      
+      foreach(FileDescription source_folder; source_folders)
+      {
+         CopyFile(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+         CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+      }
+   }
+   
+   if(HasJSON(routine_json, "dependencies"))
+   {
+      FileDescription[] dependency_folders = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["dependencies"]);
+      
+      foreach(FileDescription dep_folder; dependency_folders)
+      {
+         if(exists(PathF(dep.path, routine_info)))
+         {
+            CopyFile(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
+            CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+         }
+         else
+         {
+            dependencies = dependencies ~ " " ~ dep.path;
+         }
+      }
+   }
+   */
    
    foreach(FileDescription source_in; build_info.source_folders)
    {
@@ -1906,7 +1900,6 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       }
    }
 
-   string dependencies = "";
    foreach(FileDescription dep; build_info.dependencies)
    {
       if(AreTagsValid(dep.path, build_info, routine_info))
@@ -1935,15 +1928,12 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    string[] command_templates = LoadStringArrayFromTag(routine_info,
                                                        build_info,
                                                        version_info,
-                                                       GetLanguageCommandTag(routine_info.global_config_path, build_info.language, build_info.type),
-                                                       true);
+                                                       GetLanguageCommandTag(routine_info.global_config_path, build_info.language, build_info.type));
    
-   /*
-   foreach(string command_template; commands)
+   foreach(string command_template; command_templates)
    {
-      writeln(command_template);
-   
-      string command = command_template;
+      string command = command_template.replace("[BUILD_DIRECTORY]", temp_dir)
+                                       .replace("[DEPENDENCIES]", dependencies);
    
       if(command_batch == "")
       {
@@ -1954,32 +1944,6 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          command_batch = command_batch ~ " && ( " ~ command ~ " )";
       }
    }
-   */
-   
-   
-   foreach(string command_template; commands)
-   {
-      if(AreTagsValid(command_template, build_info, routine_info))
-      {
-         string command = ProcessTags(command_template, build_info, routine_info)
-                          .replace("[ARCH_NAME]", build_info.platform.arch)
-                          .replace("[OS_NAME]", build_info.platform.OS)
-                          .replace("[PROJECT_NAME]", build_info.project_name)
-                          .replace("[BUILD_DIRECTORY]", temp_dir)
-                          .replace("[OUTPUT_FILE]", output_file_name)
-                          .replace("[DEPENDENCIES]", dependencies);
-     
-         if(command_batch == "")
-         {
-            command_batch = command_batch ~ " ( " ~ command ~ " )";
-         }
-         else
-         {
-            command_batch = command_batch ~ " && ( " ~ command ~ " )";
-         }
-      }
-   }
-   
    
    system(toStringz(command_batch));
    

@@ -13,10 +13,11 @@ import std.container;
 TO DO:
    -Clean up code & comments
    -documentation
-   -remove extra copies of a dependency from the dependency list ("User32 User32" -> "User32")
-   -option to specify what architectures to build for on a per project basis
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
 
+TO ADD(Features):
+   -option to specify what architectures to build for on a per project basis
+   
 TO FIX:
    -Why is that folder created in the temporary directory?
 
@@ -901,7 +902,7 @@ string GetVersionString(VersionInformation version_info)
    string version_string = to!string(version_info.major) ~ version_info.breakS
                            ~ to!string(version_info.minor) ~ version_info.breakS
                            ~ to!string(version_info.patch)
-                           ~ (version_info.appended != "") ? (version_info.breakS ~ version_info.appended) : "";
+                           ~ ((version_info.appended != "") ? (version_info.breakS ~ version_info.appended) : "");
    
    return version_string;
 }
@@ -1997,13 +1998,15 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          else
          {
             writeln("LDep " ~ dep.path);
-            dependencies = dependencies ~ " " ~ dep.path;
+            
+            if(!dependencies.canFind(" " ~ dep.path))
+               dependencies = dependencies ~ " " ~ dep.path;
          }
       }
    }
    
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
-
+   
    string command_batch = "";
    
    string[] command_templates = LoadStringArrayFromTag(routine_info,

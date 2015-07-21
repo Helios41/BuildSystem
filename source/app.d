@@ -15,6 +15,7 @@ TO DO:
    -documentation
    -remove extra copies of a dependency from the dependency list ("User32 User32" -> "User32")
    -option to specify what architectures to build for on a per project basis
+   -finish porting dependencies & sources to new tag system
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
 
 TO FIX:
@@ -22,7 +23,6 @@ TO FIX:
 
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
-   -mostly working, replacing [OUTPUT_DIRECTORY] is the only problem
 */
 
 /**
@@ -609,8 +609,13 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
       bool specifies_build = false;
       bool has_built = false;
       
-      //TODO: replace [OUTPUT_DIRECTORY]
+      string[string] replace_additions;
+      replace_additions["[OUTPUT_DIRECTORY]"] = output_directory;
+      writeln(replace_additions["[OUTPUT_DIRECTORY]"]);
+      
+      SetReplaceAdditions(replace_additions);
       CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json);
+      ClearReplaceAdditions();
       
       foreach(CommandInformation command; commands)
       {
@@ -1542,23 +1547,33 @@ bool HandleConditional(BuildRoutine routine_info,
 }
 
 //TODO: remove, this is temporary
-string str_attrib_group = "";
+string ProcessTag_str_attrib_group = "";
+string[string] ProcessTag_replace_additions = null;
 
 void SetAttribGroup(string attrib_group)
 {
-   str_attrib_group = attrib_group;
+  ProcessTag_str_attrib_group = attrib_group;
 }
 
 void ClearAttribGroup()
 {
-   str_attrib_group = "";
+   ProcessTag_str_attrib_group = "";
+} 
+
+void SetReplaceAdditions(string[string] replace_additions)
+{
+  ProcessTag_replace_additions = replace_additions;
+}
+
+void ClearReplaceAdditions()
+{
+   ProcessTag_replace_additions = null;
 } 
 
 string ProcessTag(BuildRoutine routine_info, 
                   BuildInformation build_info,
                   VersionInformation version_info,
-                  string str,
-                  string[string] replace_additions = null)
+                  string str)
 { 
    string new_str = str.replace("[ARCH_NAME]", build_info.platform.arch)
                        .replace("[OS_NAME]", build_info.platform.OS)
@@ -1569,11 +1584,9 @@ string ProcessTag(BuildRoutine routine_info,
                        .replace("[VERSION_TYPE]", version_info.appended)
                        .replace("[VERSION]", GetVersionString(version_info));
                        
-   //new_str = new_str.replace("[OUTPUT_DIRECTORY]");
-                       
-   if(replace_additions != null)
+   if(ProcessTag_replace_additions != null)
    {
-      foreach(string orig_str, string repl_str; replace_additions)
+      foreach(string orig_str, string repl_str; ProcessTag_replace_additions)
       {
          new_str = new_str.replace(orig_str, repl_str);
       }
@@ -1581,7 +1594,7 @@ string ProcessTag(BuildRoutine routine_info,
    
    foreach(string attrib_name, string[] attrib_array; build_info.attributes)
    {
-      if(attrib_name != str_attrib_group)
+      if(attrib_name != ProcessTag_str_attrib_group)
       {
          new_str = new_str.replace("[ATTRIB: " ~ attrib_name ~ "]",
                                    GetAttribString(routine_info, build_info, version_info, attrib_name));
@@ -1945,14 +1958,13 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    string dependencies = "";
    
    //------------------------WIP-------------------
-   
    if(HasJSON(routine_json, "source"))
    {
       FileDescription[] source_folders = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["source"]);
       
       foreach(FileDescription source; source_folders)
       {
-         writeln(PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
+         writeln("Src " ~ PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
          //TODO: be smarter about this
          //CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
          //CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
@@ -1967,21 +1979,21 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       {
          if(exists(PathF(dep.path, routine_info)))
          {
-            writeln(PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
+            writeln("FDep " ~ PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
             //TODO: be smarter about this
             //CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
             //CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
          }
          else
          {
-            writeln(dep.path);
-            //dependencies = dependencies ~ " " ~ dep.path;
+            writeln("LDep " ~ dep.path);
+            dependencies = dependencies ~ " " ~ dep.path;
          }
       }
    }
-   
    //------------------------WIP-------------------
    
+   //----------------------REMOVE------------------
    foreach(FileDescription source_in; build_info.source_folders)
    {
       if(AreTagsValid(source_in.path, build_info, routine_info))
@@ -2013,12 +2025,9 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
             CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
             CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
          }
-         else
-         {
-            dependencies = dependencies ~ " " ~ dep.path;
-         }
       }
    }
+   //----------------------REMOVE------------------
    
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
 

@@ -42,8 +42,14 @@
       ],
       "dependencies": 
       [
-         "[OS: Windows] User32.lib",
-         "[OS: Fake_Linux] SomeLib.so",
+         {
+            "if": "OS=Windows",
+            "then": "User32.lib"
+         },
+         {
+            "if": "OS=FakeLinux",
+            "then": "SomeLib.so"
+         },
          ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".lib"]
       ],
       "optimized": false,

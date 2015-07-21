@@ -18,6 +18,8 @@ TODO:
    -option to specify what architectures to build for on a per project basis
    -CopyFile -> CopyItem (Item = both folders & files)
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
+      
+   mostly working, replacing [OUTPUT_DIRECTORY] is the only problem
 */
 
 /**
@@ -740,7 +742,7 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    if(params.length == 2)
    {
       WriteMsg("\tCopy ", PathF(params[0], routine_info), " -> ", PathF(params[1], routine_info));
-      CopyFile(PathF(params[0], routine_info), PathF(params[1], routine_info));
+      CopyItem(PathF(params[0], routine_info), PathF(params[1], routine_info));
    }
    else if(params.length == 3)
    {
@@ -759,7 +761,7 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
    if(params.length == 1)
    {
       WriteMsg("\tDelete ", PathF(params[0], routine_info), " -> /dev/null");
-      DeleteFile(PathF(params[0], routine_info));
+      DeleteItem(PathF(params[0], routine_info));
    }
    else if(params.length == 2)
    {
@@ -778,8 +780,8 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    if(params.length == 2)
    {
       WriteMsg("\tMove ", PathF(params[0], routine_info), " -> ", PathF(params[1], routine_info));
-      CopyFile(PathF(params[0], routine_info), PathF(params[1], routine_info));
-      DeleteFile(PathF(params[0], routine_info));
+      CopyItem(PathF(params[0], routine_info), PathF(params[1], routine_info));
+      DeleteItem(PathF(params[0], routine_info));
    }
    else if(params.length == 3)
    {
@@ -1787,15 +1789,17 @@ FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info,
    return null;
 }
 
-void CopyFile(string source, string destination)
+void CopyItem(string source, string destination)
 {
    try
    {
       string dest_directory = destination[0 .. destination.lastIndexOf("/")];
+      
       if(!exists(dest_directory))
          mkdirRecurse(dest_directory);
    
-      if(isFile(source))
+      //if(isFile(source))
+      if(exists(source))
          copy(source, destination, PreserveAttributes.no);
          
    } catch {} 
@@ -1812,17 +1816,18 @@ void CopyFolderContents(string source, string destination, string begining = "",
             string entry_path = e.name()[e.name().lastIndexOf("/") + 1 .. $];
             
             if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
-               CopyFile(e.name(), destination ~ e.name().replace(source, ""));
+               CopyItem(e.name(), destination ~ e.name().replace(source, ""));
          }
       }
    } catch {}
 }
 
-void DeleteFile(string path)
+void DeleteItem(string path)
 {
    try
    {
-      if(isFile(path))
+      //if(isFile(path))
+      if(exists(path))
          remove(path);
 
    } catch {} 
@@ -1839,7 +1844,7 @@ void DeleteFolderContents(string path, string begining = "", string ending = "")
             string entry_path = e.name()[e.name().lastIndexOf("/") + 1 .. $];
          
             if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
-               DeleteFile(e.name());
+               DeleteItem(e.name());
          }
       }
    } catch {}
@@ -1879,7 +1884,8 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       
       foreach(FileDescription source_folder; source_folders)
       {
-         CopyFile(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+         //TODO: be smarter about this
+         CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
          CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
       }
    }
@@ -1892,7 +1898,8 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       {
          if(exists(PathF(dep.path, routine_info)))
          {
-            CopyFile(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
+            //TODO: be smarter about this
+            CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
             CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
          }
          else
@@ -1913,7 +1920,8 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
                        .replace("[OS_NAME]", build_info.platform.OS)
                        .replace("[PROJECT_NAME]", build_info.project_name);
          
-         CopyFile(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+         //TODO: be smarter about this
+         CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
          CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
       }
    }
@@ -1929,7 +1937,8 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
                   
          if(exists(PathF(dep.path, routine_info)))
          {
-            CopyFile(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
+            //TODO: be smarter about this
+            CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
             CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
          }
          else
@@ -1965,7 +1974,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    
    system(toStringz(command_batch));
    
-   CopyFile(temp_dir ~ "/" ~ build_info.project_name ~ file_ending, PathF(output_folder, routine_info) ~ "/" ~ output_file_name ~ file_ending);
+   CopyItem(temp_dir ~ "/" ~ build_info.project_name ~ file_ending, PathF(output_folder, routine_info) ~ "/" ~ output_file_name ~ file_ending);
    
    rmdirRecurse(temp_dir);
 }

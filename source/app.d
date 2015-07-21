@@ -15,7 +15,6 @@ TO DO:
    -documentation
    -remove extra copies of a dependency from the dependency list ("User32 User32" -> "User32")
    -option to specify what architectures to build for on a per project basis
-   -finish porting dependencies & sources to new tag system
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
 
 TO FIX:
@@ -1957,7 +1956,6 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    JSONValue routine_json = GetRoutineJSON(routine_info);
    string dependencies = "";
    
-   //------------------------WIP-------------------
    if(HasJSON(routine_json, "source"))
    {
       FileDescription[] source_folders = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["source"]);
@@ -1965,9 +1963,15 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       foreach(FileDescription source; source_folders)
       {
          writeln("Src " ~ PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
-         //TODO: be smarter about this
-         //CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
-         //CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+         
+         if((source.begining != "") || (source.ending != ""))
+         {
+            CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+         }
+         else
+         {
+            CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+         }
       }
    }
    
@@ -1980,9 +1984,15 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          if(exists(PathF(dep.path, routine_info)))
          {
             writeln("FDep " ~ PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
-            //TODO: be smarter about this
-            //CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
-            //CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+            
+            if((dep.begining != "") || (dep.ending != ""))
+            {
+               CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+            }
+            else
+            {
+               CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
+            }
          }
          else
          {
@@ -1991,43 +2001,6 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          }
       }
    }
-   //------------------------WIP-------------------
-   
-   //----------------------REMOVE------------------
-   foreach(FileDescription source_in; build_info.source_folders)
-   {
-      if(AreTagsValid(source_in.path, build_info, routine_info))
-      {
-         FileDescription source = source_in;
-         source.path = ProcessTags(source_in.path, build_info, routine_info)
-                       .replace("[ARCH_NAME]", build_info.platform.arch)
-                       .replace("[OS_NAME]", build_info.platform.OS)
-                       .replace("[PROJECT_NAME]", build_info.project_name);
-         
-         //TODO: be smarter about this
-         CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
-         CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
-      }
-   }
-
-   foreach(FileDescription dep; build_info.dependencies)
-   {
-      if(AreTagsValid(dep.path, build_info, routine_info))
-      {
-         dep.path = ProcessTags(dep.path, build_info, routine_info)
-                    .replace("[ARCH_NAME]", build_info.platform.arch)
-                    .replace("[OS_NAME]", build_info.platform.OS)
-                    .replace("[PROJECT_NAME]", build_info.project_name);
-                  
-         if(exists(PathF(dep.path, routine_info)))
-         {
-            //TODO: be smarter about this
-            CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
-            CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
-         }
-      }
-   }
-   //----------------------REMOVE------------------
    
    writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
 

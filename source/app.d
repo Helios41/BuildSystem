@@ -16,7 +16,8 @@ TODO:
    -Why is that folder created in the temporary directory?
    -remove extra copies of a dependency from the dependency list ("User32 User32" -> "User32")
    -option to specify what architectures to build for on a per project basis
-   -copy entire folder, not just contents
+   -CopyFile -> CopyItem (Item = both folders & files)
+   -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
 */
 
 /**
@@ -253,6 +254,16 @@ void RunRoutine(string file_path, string routine_name, string global_config_path
       else
       {
          build_info.can_build = false;
+      }
+      
+      if(HasJSON(routine_json, "global_config"))
+      {
+         JSONValue global_config_json = routine_json["global_config"];
+         
+         if(global_config_json.type() == JSON_TYPE.STRING)
+         {
+            build_info.global_config_path = global_config_json.str();
+         }
       }
       
       if(HasJSON(routine_json, "language"))
@@ -798,6 +809,13 @@ void CallOperation(BuildRoutine routine_info, string[] params)
       VersionType version_type = VersionType.None;
       string global_config_path = routine_info.global_config_path;
       bool function_called = false;
+      
+      /*
+      if(exists(config_file_path ~ ".new"))
+      {
+         config_file_path = config_file_path ~ ".new";
+      }
+      */
       
       for(int i = 1; params.length > i; ++i)
       {

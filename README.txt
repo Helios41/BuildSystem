@@ -26,3 +26,19 @@ Documentation:
    where the build file ends up.
    
    [Work In Progress]
+   
+{
+   "default": "Default function name",
+   "function name":
+   {
+      "language": "a programming language",
+      "project": "project name",
+      "type": "executable, static or dynamic",
+      "build": "./output_directory/",
+      
+   },
+   "another function name":
+   {
+   
+   }
+}

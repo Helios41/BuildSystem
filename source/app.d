@@ -267,7 +267,7 @@ void RunRoutine(string file_path, string routine_name, string global_config_path
          
          if(global_config_json.type() == JSON_TYPE.STRING)
          {
-            build_info.global_config_path = global_config_json.str();
+            routine_info.global_config_path = global_config_json.str();
          }
       }
       
@@ -1557,9 +1557,9 @@ void ClearAttribGroup()
 string ProcessTag(BuildRoutine routine_info, 
                   BuildInformation build_info,
                   VersionInformation version_info,
-                  string str)
-{
-
+                  string str,
+                  string[string] replace_additions = null)
+{ 
    string new_str = str.replace("[ARCH_NAME]", build_info.platform.arch)
                        .replace("[OS_NAME]", build_info.platform.OS)
                        .replace("[PROJECT_NAME]", build_info.project_name)
@@ -1570,6 +1570,14 @@ string ProcessTag(BuildRoutine routine_info,
                        .replace("[VERSION]", GetVersionString(version_info));
                        
    //new_str = new_str.replace("[OUTPUT_DIRECTORY]");
+                       
+   if(replace_additions != null)
+   {
+      foreach(string orig_str, string repl_str; replace_additions)
+      {
+         new_str = new_str.replace(orig_str, repl_str);
+      }
+   }
    
    foreach(string attrib_name, string[] attrib_array; build_info.attributes)
    {
@@ -1789,6 +1797,62 @@ FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info,
                                               VersionInformation version_info,
                                               JSONValue json)
 {
+   Array!FileDescription file_list = Array!FileDescription();
+   
+   if(json.type() == JSON_TYPE.ARRAY)
+   {
+      foreach(JSONValue json_value; json.array)
+      {
+         FileDescription fdesc;
+      
+         if(json_value.type() == JSON_TYPE.STRING)
+         {
+            fdesc.path = json_value.str();
+         }
+         else
+         {
+            string[] strings = LoadStringArrayFromTag(routine_info, build_info, version_info, json_value);
+            
+            if(strings == null)
+               continue;
+            
+            fdesc.path = strings[0];
+            
+            if(strings.length == 2)
+            {
+               fdesc.ending = strings[1];
+            }  
+            else if(strings.length == 3)
+            {
+               fdesc.begining = strings[1];
+               fdesc.ending = strings[2];
+            }
+         }
+         
+         file_list.insert(fdesc);
+      }
+   }
+   else if(json.type() == JSON_TYPE.STRING)
+   {
+      FileDescription fdesc;
+      fdesc.path = json.str();
+      
+      file_list.insert(fdesc);
+   }
+   
+   if(file_list.length > 0)
+   {
+      FileDescription[] output = new FileDescription[file_list.length];
+      int index = 0;
+      
+      foreach(FileDescription fdesc; file_list)
+      {
+         output[index++] = fdesc;
+      }
+      
+      return output;
+   }
+   
    return null;
 }
 
@@ -1880,38 +1944,43 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    JSONValue routine_json = GetRoutineJSON(routine_info);
    string dependencies = "";
    
-   /*
+   //------------------------WIP-------------------
+   
    if(HasJSON(routine_json, "source"))
    {
       FileDescription[] source_folders = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["source"]);
       
-      foreach(FileDescription source_folder; source_folders)
+      foreach(FileDescription source; source_folders)
       {
+         writeln(PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
          //TODO: be smarter about this
-         CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
-         CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+         //CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+         //CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
       }
    }
    
    if(HasJSON(routine_json, "dependencies"))
    {
-      FileDescription[] dependency_folders = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["dependencies"]);
+      FileDescription[] dependency_items = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["dependencies"]);
       
-      foreach(FileDescription dep_folder; dependency_folders)
+      foreach(FileDescription dep; dependency_items)
       {
          if(exists(PathF(dep.path, routine_info)))
          {
+            writeln(PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
             //TODO: be smarter about this
-            CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
-            CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+            //CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
+            //CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
          }
          else
          {
-            dependencies = dependencies ~ " " ~ dep.path;
+            writeln(dep.path);
+            //dependencies = dependencies ~ " " ~ dep.path;
          }
       }
    }
-   */
+   
+   //------------------------WIP-------------------
    
    foreach(FileDescription source_in; build_info.source_folders)
    {

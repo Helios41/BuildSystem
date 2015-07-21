@@ -10,16 +10,19 @@ import std.conv;
 import std.container;
 
 /**
-TODO:
+TO DO:
    -Clean up code & comments
    -documentation
-   -Why is that folder created in the temporary directory?
    -remove extra copies of a dependency from the dependency list ("User32 User32" -> "User32")
    -option to specify what architectures to build for on a per project basis
-   -CopyFile -> CopyItem (Item = both folders & files)
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
-      
-   mostly working, replacing [OUTPUT_DIRECTORY] is the only problem
+
+TO FIX:
+   -Why is that folder created in the temporary directory?
+
+NOTES:
+   -CopyFile -> CopyItem (Item = both folders & files)
+   -mostly working, replacing [OUTPUT_DIRECTORY] is the only problem
 */
 
 /**

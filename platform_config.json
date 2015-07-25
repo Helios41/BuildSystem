@@ -3,6 +3,7 @@
    [
       "Windows", ["X86_64", "X86"]
    ],
+   "host": ["Windows", "X86_64"],
    "languages":
    {
       "C":

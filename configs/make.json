@@ -23,7 +23,8 @@
          {
             "if": "OS=Linux",
             "then": ["print", "Printed on Linux"]
-         }
+         },
+         ["call", "=", "SayHi"]
       ],
       "per-operations":
       [
@@ -62,6 +63,13 @@
       "operations":
       [
          ["move", "../bob.json", "../test/bob.json"]
+      ]
+   },
+   "SayHi":
+   {
+      "operations":
+      [
+         ["print", "hello"]
       ]
    },
    "CallTest":

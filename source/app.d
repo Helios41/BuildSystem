@@ -8,21 +8,30 @@ import std.c.stdlib;
 import std.uuid;
 import std.conv;
 import std.container;
+import std.net.curl : download;
 
 /**
 TO DO:
    -Clean up code & comments
    -documentation
+   -default platform configs
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
-
+   -redesign field cross references
+   
+   -either build for host, all available or specified platforms (default host only)
+   -specify platforms & host in the platform config on a per language basis
+   -allow any value to use field cross references
+   
 TO ADD(Features):
    -option to specify what architectures to build for on a per project basis
+   -ability to download dependencies/sources (git or http)
    
 TO FIX:
    -Why is that folder created in the temporary directory?
 
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
+   -Is setting the platform to the host for the regular operations the right thing to do?
 */
 
 /**
@@ -31,6 +40,15 @@ NOTES:
 */
 
 const bool DEBUG_PRINTING = false;
+
+static if(DEBUG_PRINTING)
+{
+   alias WriteMsg = writeln;
+}
+else
+{
+   alias WriteMsg = DontWriteMsg;
+}
 
 enum VersionType : string
 {
@@ -78,6 +96,7 @@ struct BuildInformation
    string project_name;
    string[][string] attributes;
    FileDescription[] dependencies;
+   bool print_build_progress;
 }
 
 struct BuildRoutine
@@ -85,7 +104,7 @@ struct BuildRoutine
    string directory;
    string path;
    string name;
-   string global_config_path;
+   string platform_config_path;
 }
 
 struct FieldCrossReference
@@ -101,6 +120,82 @@ struct CommandInformation
    string[] params;
 }
 
+void LaunchConfig(string default_platform_config_path,
+                  string config_file_path,
+                  string[] args)
+{
+   if(exists(config_file_path ~ ".new"))
+   {
+      config_file_path = config_file_path ~ ".new";
+   }
+
+   bool function_called = false;
+   
+   VersionType version_type = VersionType.None; 
+   string platform_config_path = default_platform_config_path;
+   bool print_build_progress = true;
+   
+   for(int i = 0; args.length > i; ++i)
+   {
+      string argument = args[i];
+      
+      if(argument.startsWith("-"))
+      {
+         switch(argument)
+         {
+            case "-major":
+               version_type = VersionType.Major;
+               break;
+               
+            case "-minor":
+               version_type = VersionType.Minor;
+               break;
+               
+            case "-patch":
+               version_type = VersionType.Patch;
+               break;
+            
+            case "-config":
+            {
+               if(args.length > (i + 1))
+               {
+                  platform_config_path = args[++i];
+               }
+               else
+               {
+                  writeln("Missing argument for option \"-config\"");
+               }
+            }
+            break;
+            
+            case "-silent":
+            {
+               print_build_progress = false;
+            }
+            break;
+            
+            default:
+               writeln("Unknown option ", argument);
+               break;
+         }
+      }
+      else
+      {
+         function_called = true;
+         RunRoutine(config_file_path, argument, platform_config_path, version_type, print_build_progress);
+         
+         version_type = VersionType.None; 
+         platform_config_path = default_platform_config_path;
+         print_build_progress = true;
+      }
+   }
+   
+   if(!function_called)
+   {
+      RunRoutine(config_file_path, GetDefaultRoutine(config_file_path), platform_config_path, version_type, print_build_progress);
+   }
+}
+
 void main(string[] args)
 {
    if(args.length < 2)
@@ -110,74 +205,18 @@ void main(string[] args)
       return;
    }
    
-   const string GlobalConfigFilePath = "./global_config.json";
+   const string default_platform_config_path = "./platform_config.json";
    string config_file_path = args[1];
    
-   if(exists(config_file_path ~ ".new"))
+   if(!exists(default_platform_config_path))
    {
-      config_file_path = config_file_path ~ ".new";
+      writeln("Default platform config file missing! Generating empty json!");
+      std.file.write(default_platform_config_path, "{\n}");
+      return;
    }
    
-   if(args.length == 2)
-   {
-      RunRoutine(config_file_path, GetDefaultRoutine(config_file_path), GlobalConfigFilePath);
-   }
-   else if(args.length > 2)
-   {
-      VersionType version_type = VersionType.None; 
-      string global_config_path = GlobalConfigFilePath;
-      bool function_called = false;
-   
-      for(int i = 2; args.length > i; ++i)
-      {
-         string argument = args[i];
-         
-         if(argument.startsWith("-"))
-         {
-            switch(argument)
-            {
-               case "-major":
-                  version_type = VersionType.Major;
-                  break;
-                  
-               case "-minor":
-                  version_type = VersionType.Minor;
-                  break;
-                  
-               case "-patch":
-                  version_type = VersionType.Patch;
-                  break;
-               
-               case "-config":
-               {
-                  if(args.length > (i + 1))
-                  {
-                     global_config_path = args[++i];
-                  }
-                  else
-                  {
-                     writeln("Missing argument for option \"-config\"");
-                  }
-               }
-               break;
-               
-               default:
-                  writeln("Unknown option ", argument);
-                  break;
-            }
-         }
-         else
-         {
-            function_called = true;
-            RunRoutine(config_file_path, argument, global_config_path, version_type);
-         }
-      }
-      
-      if(!function_called)
-      {
-         RunRoutine(config_file_path, GetDefaultRoutine(config_file_path), global_config_path, version_type);
-      }
-   }
+   if(args.length >= 2)
+      LaunchConfig(default_platform_config_path, config_file_path, args[2 .. $]);
 }
 
 string GetDefaultRoutine(string file_path)
@@ -208,7 +247,7 @@ string GetDefaultRoutine(string file_path)
    return null;
 }
 
-void RunRoutine(string file_path, string routine_name, string global_config_path, VersionType version_type = VersionType.None)
+void RunRoutine(string file_path, string routine_name, string default_platform_config_path, VersionType version_type, bool print_build_progress)
 {
    WriteMsg("Executing routine ", routine_name, " in ", file_path);
 
@@ -227,7 +266,17 @@ void RunRoutine(string file_path, string routine_name, string global_config_path
    
    if(routine_json.type() == JSON_TYPE.OBJECT)
    {
-      BuildRoutine routine_info = MakeRoutine(file_path, routine_name, global_config_path);
+      BuildRoutine routine_info = MakeRoutine(file_path, routine_name, default_platform_config_path);
+   
+      if(HasJSON(routine_json, "platform config"))
+      {
+         JSONValue specified_platform_config_json = routine_json["platform config"];
+         
+         if(specified_platform_config_json.type() == JSON_TYPE.STRING)
+         {
+            routine_info = MakeRoutine(file_path, routine_name, specified_platform_config_json.str());
+         }
+      }
    
       BuildInformation build_info;
       build_info.language = "";
@@ -236,10 +285,10 @@ void RunRoutine(string file_path, string routine_name, string global_config_path
       build_info.source_folders = null;
       build_info.build_folder = "";
       build_info.project_name = "";
+      build_info.platform = GetHost(routine_info.platform_config_path);
       build_info.platform.optimized = true;
-      build_info.platform.arch = "";
-      build_info.platform.OS = "";
       build_info.dependencies = null;
+      build_info.print_build_progress = print_build_progress;
       
       VersionInformation version_info;
       version_info.type = version_type;
@@ -259,16 +308,6 @@ void RunRoutine(string file_path, string routine_name, string global_config_path
       else
       {
          build_info.can_build = false;
-      }
-      
-      if(HasJSON(routine_json, "global_config"))
-      {
-         JSONValue global_config_json = routine_json["global_config"];
-         
-         if(global_config_json.type() == JSON_TYPE.STRING)
-         {
-            routine_info.global_config_path = global_config_json.str();
-         }
       }
       
       if(HasJSON(routine_json, "language"))
@@ -613,9 +652,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
       replace_additions["[OUTPUT_DIRECTORY]"] = output_directory;
       writeln(replace_additions["[OUTPUT_DIRECTORY]"]);
       
-      SetReplaceAdditions(replace_additions);
-      CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json);
-      ClearReplaceAdditions();
+      CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json, replace_additions);
       
       foreach(CommandInformation command; commands)
       {
@@ -708,8 +745,6 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
    }
 }
 
-
-
 void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionInformation in_version_info)
 {
    if(build_info.can_build)
@@ -722,7 +757,7 @@ void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionIn
       }
       
       JSONValue routine_json = GetRoutineJSON(routine);
-      string[int][string] platforms = GetAvailablePlatforms(routine.global_config_path);
+      string[int][string] platforms = GetAvailablePlatforms(routine.platform_config_path);
       
       foreach(string OS, string[int] archs; platforms)
       {
@@ -809,69 +844,19 @@ void CallOperation(BuildRoutine routine_info, string[] params)
 {
    WriteMsg("Executing calls:");
    
-   if(params.length > 1)
+   if(params.length >= 1)
    {
+      const string default_platform_config_path = routine_info.platform_config_path; 
+      string config_file_path = PathF(params[0], routine_info);
+   
       if((params[0] == "=") || (params[0] == "||"))
       {
-         params[0] = routine_info.path;
+         config_file_path = routine_info.path;
       }
       
-      VersionType version_type = VersionType.None;
-      string global_config_path = routine_info.global_config_path;
-      bool function_called = false;
-      
-      /*
-      if(exists(config_file_path ~ ".new"))
-      {
-         config_file_path = config_file_path ~ ".new";
-      }
-      */
-      
-      for(int i = 1; params.length > i; ++i)
-      {
-         string call_arg = params[i];
-         
-         if(call_arg.startsWith("-"))
-         {
-            if(call_arg == "-major")
-            {
-               version_type = VersionType.Major;
-            }
-            else if(call_arg == "-minor")
-            {
-               version_type = VersionType.Minor;
-            }
-            else if(call_arg == "-patch")
-            {
-               version_type = VersionType.Patch;
-            }
-            else if(call_arg == "-config")
-            {
-               if(params.length > (i + 1))
-               {
-                  global_config_path = params[++i];
-               }
-               else
-               {
-                  writeln("Missing argument for option \"-config\"");
-               }
-            }
-         }
-         else
-         {
-            function_called = true;
-            RunRoutine(PathF(params[0], routine_info), call_arg, global_config_path, version_type);
-         }
-      }
-   
-      if(!function_called)
-      {
-         RunRoutine(PathF(params[0], routine_info), GetDefaultRoutine(PathF(params[0], routine_info)), global_config_path, version_type);
-      }
-   }
-   else if(params.length == 1)
-   {
-      RunRoutine(PathF(params[0], routine_info), GetDefaultRoutine(PathF(params[0], routine_info)), routine_info.global_config_path);
+      LaunchConfig(default_platform_config_path,
+                   config_file_path,
+                   params[1 .. $]);
    }
 }
 
@@ -1020,10 +1005,42 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
       }
    }
    
-   writeln("Language config missing for language \"", language_name, "\"");
+   writeln("Platform config missing for language \"", language_name, "\"");
    exit(-1);
    
    return JSONValue.init; 
+}
+
+PlatformInformation GetHost(string file_path)
+{
+   WriteMsg("Get Host");
+   
+   JSONValue file_json = parseJSON(readText(file_path));
+   
+   if(HasJSON(file_json, "host"))
+   {
+      JSONValue host_json = file_json["host"];
+      
+      if(host_json.type() == JSON_TYPE.ARRAY)
+      {
+         if(host_json.array.length == 2)
+         {
+            if((host_json.array[0].type() == JSON_TYPE.STRING) &&
+               (host_json.array[1].type() == JSON_TYPE.STRING))
+            {
+               PlatformInformation info;
+               info.OS = host_json[0].str();
+               info.arch = host_json[1].str();
+               return info;
+            } 
+         }
+      }
+   }
+   
+   writeln("Platform config missing host");
+   exit(-1);
+
+   return PlatformInformation.init;
 }
 
 JSONValue GetLanguageCommandTag(string file_path, string language_name, string build_type)
@@ -1040,7 +1057,7 @@ JSONValue GetLanguageCommandTag(string file_path, string language_name, string b
          return build_type_json["commands"];
    }
    
-   writeln("Language config missing commands for language ", language_name, "(", build_type, ")");
+   writeln("Platform config missing commands for language ", language_name, "(", build_type, ")");
    exit(-1);
    
    return JSONValue.init;
@@ -1076,7 +1093,7 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
    }
    else
    {
-      writeln("Language config missing commands for language ", language_name, "(", build_type, ")");
+      writeln("Platform config missing commands for language ", language_name, "(", build_type, ")");
       exit(-1);
    }
    
@@ -1085,6 +1102,8 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
 
 string[] GetLanguageOptionalAttribs(string file_path, string language_name, string build_type)
 {
+   WriteMsg("Get Language Optional Attribs");
+
    JSONValue language_json = GetLanguageJSON(file_path, language_name);
    string[] output = null;
    
@@ -1111,11 +1130,6 @@ string[] GetLanguageOptionalAttribs(string file_path, string language_name, stri
    }
 
    return output;
-}
-
-bool IsAttribOptional(string file_path, string language_name, string build_type, string attrib_name)
-{
-   return GetLanguageOptionalAttribs(file_path, language_name, build_type).canFind(attrib_name);
 }
 
 string GetLanguageFileEnding(string file_path, string language_name, string build_type)
@@ -1192,144 +1206,6 @@ string[int][string] GetAvailablePlatforms(string file_path)
    return platforms;
 }
 
-bool IsProperPlatform(string tag, PlatformInformation platform)
-{ 
-   bool wrong_configuration = false;
-   
-   if(tag.startsWith("[ARCH: "))
-   {
-      if(!tag.startsWith("[ARCH: " ~ platform.arch ~ "]"))
-      {
-         wrong_configuration = true;
-      }
-   }
-   
-   if(tag.startsWith("[OS: "))
-   {
-      if(!tag.startsWith("[OS: " ~ platform.OS ~ "]"))
-      {
-         wrong_configuration = true;
-      }
-   }
-   
-   if(tag.startsWith("[OPT]") && !platform.optimized)
-   {
-      wrong_configuration = true;
-   }
-   else if(tag.startsWith("[NOPT]") && platform.optimized)
-   {
-      wrong_configuration = true;
-   }
-   
-   return !wrong_configuration;
-}
-
-string RemoveTags(string tag, PlatformInformation platform)
-{
-   string new_tag = tag.replace("[ARCH: " ~ platform.arch ~ "]", "")
-                       .replace("[OS: " ~ platform.OS ~ "]", "")
-                       .replace("[OPT]", "")
-                       .replace("[NOPT]", "");
-                       
-   int letter_index = 0;              
-   
-   foreach(char c; new_tag)
-   {
-      if(c != ' ')
-         break;
-         
-      ++letter_index;
-   }
-   
-   if(letter_index != 0)
-      new_tag = new_tag[letter_index .. $];
-                       
-   return new_tag;
-}
-
-string ProcessTags(string tag, BuildInformation build_info, BuildRoutine routine_info)
-{
-   string new_tag = RemoveTags(tag, build_info.platform);
-   
-   foreach(string attrib_name, string[] attrib_array; build_info.attributes)
-   {
-      string attrib_string = "";
-   
-      foreach(string attrib_element; attrib_array)
-      {
-         if(IsProperPlatform(attrib_element, build_info.platform))
-            attrib_string = attrib_string ~ " " ~ RemoveTags(attrib_element, build_info.platform)
-                                                  .replace("[ARCH_NAME]", build_info.platform.arch)
-                                                  .replace("[OS_NAME]", build_info.platform.OS)
-                                                  .replace("[PROJECT_NAME]", build_info.project_name);
-      }
-      
-      new_tag = new_tag.replace("[ATTRIB: " ~ attrib_name ~ "]", attrib_string);
-   }
-   
-   foreach(string optional_attrib_name; GetLanguageOptionalAttribs(routine_info.global_config_path, build_info.language, build_info.type))
-   {
-      new_tag = new_tag.replace("[ATTRIB: " ~ optional_attrib_name ~ "]", ""); 
-   }
-   
-   if(IsFieldCrossReference(new_tag))
-   {
-      FieldCrossReference fcr = GetFieldCrossReference(routine_info, new_tag);
-      
-      BuildRoutine fcr_routine = fcr.routine;
-      fcr_routine.path = PathF(fcr.routine.path, routine_info);
-      fcr_routine.directory = PathF(fcr.routine.directory, routine_info);
-      
-      string field_string = GetFieldStringFromRoutine(fcr_routine, fcr.field);
-      new_tag = new_tag.replace(fcr.tag, field_string);
-   }
-   
-   return new_tag;
-}
-
-bool AreTagsValid(string tag, BuildInformation build_info, BuildRoutine routine)
-{
-   bool tags_valid = true;
-   string copy_tag = tag;
-   
-   if(IsProperPlatform(tag, build_info.platform))
-   {
-      while(tags_valid)
-      {
-         int index_of = copy_tag.indexOf("[ATTRIB: ");
-         
-         if(index_of >= 0)
-         {
-            copy_tag = copy_tag[(index_of + "[ATTRIB: ".length) .. $];
-            string attrib_name = copy_tag[0 .. copy_tag.indexOf("]")];
-            copy_tag = copy_tag[copy_tag.indexOf("]") + 1 .. $];
-            
-            bool is_optional = IsAttribOptional(routine.global_config_path, build_info.language, build_info.type, attrib_name);
-            auto is_available = (attrib_name in build_info.attributes);
-            if(!is_available && !is_optional)
-            {
-               writeln("------------------------------------------------------");
-               writeln("Attribute \"", attrib_name, "\" not available! \nReferenced in tag\n\"", tag , "\"");
-               writeln("------------------------------------------------------");
-               
-               tags_valid = false;
-               break;
-            }
-         }
-         else
-         {
-            break;
-         }
-      }
-   }
-   else
-   {
-      tags_valid = false;
-   }
-   
-   return tags_valid;
-}
-
 string[] GetFieldFromRoutine(BuildRoutine routine, string field_name)
 {
    JSONValue routine_json = GetRoutineJSON(routine);
@@ -1391,24 +1267,24 @@ FieldCrossReference GetFieldCrossReference(BuildRoutine routine_info, string in_
    if(field_tag.canFind(":"))
    {
       string routine_name = field_tag[field_tag.indexOf(":") + 1 .. field_tag.indexOf("]")];
-      fcr.routine = MakeRoutine(file_path, routine_name, routine_info.global_config_path);
+      fcr.routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
    }
    else
    {
-      fcr.routine = MakeRoutine(file_path, GetDefaultRoutine(PathF(file_path, routine_info)), routine_info.global_config_path);
+      fcr.routine = MakeRoutine(file_path, GetDefaultRoutine(PathF(file_path, routine_info)), routine_info.platform_config_path);
    }
    
    return fcr;
 }
 
-BuildRoutine MakeRoutine(string file_path, string routine_name, string global_config_path)
+BuildRoutine MakeRoutine(string file_path, string routine_name, string platform_config_path)
 {
    BuildRoutine routine_info;
    
    routine_info.path = file_path;
    routine_info.name = routine_name;
    routine_info.directory = file_path[0 .. file_path.lastIndexOf("/") + 1];
-   routine_info.global_config_path = global_config_path;
+   routine_info.platform_config_path = platform_config_path;
    
    return routine_info;
 }
@@ -1499,9 +1375,7 @@ string GetAttribString(BuildRoutine routine_info,
    {
       JSONValue attrib_json = routine_json[attrib_name];
       
-      SetAttribGroup(attrib_name);
-      string[] attribs = LoadStringArrayFromTag(routine_info, build_info, version_info, attrib_json);
-      ClearAttribGroup();
+      string[] attribs = LoadStringArrayFromTag(routine_info, build_info, version_info, attrib_json, null, attrib_name);
       
       foreach(string str; attribs)
       {
@@ -1546,34 +1420,12 @@ bool HandleConditional(BuildRoutine routine_info,
    return false;
 }
 
-//TODO: remove, this is temporary
-string ProcessTag_str_attrib_group = "";
-string[string] ProcessTag_replace_additions = null;
-
-void SetAttribGroup(string attrib_group)
-{
-  ProcessTag_str_attrib_group = attrib_group;
-}
-
-void ClearAttribGroup()
-{
-   ProcessTag_str_attrib_group = "";
-} 
-
-void SetReplaceAdditions(string[string] replace_additions)
-{
-  ProcessTag_replace_additions = replace_additions;
-}
-
-void ClearReplaceAdditions()
-{
-   ProcessTag_replace_additions = null;
-} 
-
 string ProcessTag(BuildRoutine routine_info, 
                   BuildInformation build_info,
                   VersionInformation version_info,
-                  string str)
+                  string str,
+                  string[string] replace_additions,
+                  string str_attrib_group)
 { 
    string new_str = str.replace("[ARCH_NAME]", build_info.platform.arch)
                        .replace("[OS_NAME]", build_info.platform.OS)
@@ -1584,9 +1436,9 @@ string ProcessTag(BuildRoutine routine_info,
                        .replace("[VERSION_TYPE]", version_info.appended)
                        .replace("[VERSION]", GetVersionString(version_info));
                        
-   if(ProcessTag_replace_additions != null)
+   if(replace_additions != null)
    {
-      foreach(string orig_str, string repl_str; ProcessTag_replace_additions)
+      foreach(string orig_str, string repl_str; replace_additions)
       {
          new_str = new_str.replace(orig_str, repl_str);
       }
@@ -1594,18 +1446,22 @@ string ProcessTag(BuildRoutine routine_info,
    
    foreach(string attrib_name, string[] attrib_array; build_info.attributes)
    {
-      if(attrib_name != ProcessTag_str_attrib_group)
+      if(attrib_name != str_attrib_group)
       {
          new_str = new_str.replace("[ATTRIB: " ~ attrib_name ~ "]",
                                    GetAttribString(routine_info, build_info, version_info, attrib_name));
       }
    }
    
-   foreach(string optional_attrib_name; GetLanguageOptionalAttribs(routine_info.global_config_path, build_info.language, build_info.type))
+   //TODO: fix this properly, this is temporary
+   if(build_info.language != "")
    {
-      new_str = new_str.replace("[ATTRIB: " ~ optional_attrib_name ~ "]", ""); 
+      foreach(string optional_attrib_name; GetLanguageOptionalAttribs(routine_info.platform_config_path, build_info.language, build_info.type))
+      {
+         new_str = new_str.replace("[ATTRIB: " ~ optional_attrib_name ~ "]", ""); 
+      }
    }
-   
+      
    if(IsFieldCrossReference(new_str))
    {
       FieldCrossReference fcr = GetFieldCrossReference(routine_info, new_str);
@@ -1624,7 +1480,9 @@ string ProcessTag(BuildRoutine routine_info,
 string LoadStringFromTag(BuildRoutine routine_info, 
                          BuildInformation build_info,
                          VersionInformation version_info,
-                         JSONValue json)
+                         JSONValue json,
+                         string[string] replace_additions = null,
+                         string str_attrib_group = "")
 {
    if(json.type() == JSON_TYPE.OBJECT)
    {
@@ -1645,7 +1503,7 @@ string LoadStringFromTag(BuildRoutine routine_info,
             
             if(state)
             {
-               return ProcessTag(routine_info, build_info, version_info, then_json.str());
+               return ProcessTag(routine_info, build_info, version_info, then_json.str(), replace_additions, str_attrib_group);
             }
             else if(HasJSON(json, "else"))
             {
@@ -1653,7 +1511,7 @@ string LoadStringFromTag(BuildRoutine routine_info,
                
                if(else_json.type() == JSON_TYPE.STRING)
                {
-                  return ProcessTag(routine_info, build_info, version_info, else_json.str());
+                  return ProcessTag(routine_info, build_info, version_info, else_json.str(), replace_additions, str_attrib_group);
                }
             }
          }
@@ -1675,7 +1533,9 @@ void LoadStringArrayFromTag_internal(BuildRoutine routine_info,
                                      BuildInformation build_info,
                                      VersionInformation version_info,
                                      JSONValue json,
-                                     Array!string *sarray)
+                                     Array!string *sarray,
+                                     string[string] replace_additions = null,
+                                     string str_attrib_group = "")
 {
    if(HasJSON(json, "if") && HasJSON(json, "then"))
    {
@@ -1696,7 +1556,7 @@ void LoadStringArrayFromTag_internal(BuildRoutine routine_info,
          {
             JSONMapString(then_json, (string str, int i)
             {
-               sarray.insert(ProcessTag(routine_info, build_info, version_info, str));
+               sarray.insert(ProcessTag(routine_info, build_info, version_info, str, replace_additions, str_attrib_group));
             });
          }
          else if(HasJSON(json, "else"))
@@ -1705,7 +1565,7 @@ void LoadStringArrayFromTag_internal(BuildRoutine routine_info,
             
             JSONMapString(else_json, (string str, int i)
             {
-               sarray.insert(ProcessTag(routine_info, build_info, version_info, str));
+               sarray.insert(ProcessTag(routine_info, build_info, version_info, str, replace_additions, str_attrib_group));
             }); 
          }
       }
@@ -1715,7 +1575,9 @@ void LoadStringArrayFromTag_internal(BuildRoutine routine_info,
 string[] LoadStringArrayFromTag(BuildRoutine routine_info, 
                                 BuildInformation build_info,
                                 VersionInformation version_info,
-                                JSONValue json)
+                                JSONValue json,
+                                string[string] replace_additions = null,
+                                string str_attrib_group = "")
 {
    Array!string sarray = Array!string();
    
@@ -1725,20 +1587,20 @@ string[] LoadStringArrayFromTag(BuildRoutine routine_info,
       {
          if(json_value.type() == JSON_TYPE.OBJECT)
          {
-            LoadStringArrayFromTag_internal(routine_info, build_info, version_info, json_value, &sarray);
+            LoadStringArrayFromTag_internal(routine_info, build_info, version_info, json_value, &sarray, replace_additions, str_attrib_group);
          }
          else if(json_value.type() == JSON_TYPE.STRING)
          {
             JSONMapString(json_value, (string str, int i)
             {
-               sarray.insert(ProcessTag(routine_info, build_info, version_info, str));
+               sarray.insert(ProcessTag(routine_info, build_info, version_info, str, replace_additions, str_attrib_group));
             }); 
          }
       }
    }
    else if(json.type() == JSON_TYPE.OBJECT)
    {
-      LoadStringArrayFromTag_internal(routine_info, build_info, version_info, json, &sarray);
+      LoadStringArrayFromTag_internal(routine_info, build_info, version_info, json, &sarray, replace_additions, str_attrib_group);
    }
 
    if(sarray.length > 0)
@@ -1760,7 +1622,9 @@ string[] LoadStringArrayFromTag(BuildRoutine routine_info,
 CommandInformation[] LoadCommandsFromTag(BuildRoutine routine_info, 
                                          BuildInformation build_info,
                                          VersionInformation version_info,
-                                         JSONValue json)
+                                         JSONValue json,
+                                         string[string] replace_additions = null,
+                                         string str_attrib_group = "")
 {
    Array!CommandInformation command_list = Array!CommandInformation();
 
@@ -1776,7 +1640,7 @@ CommandInformation[] LoadCommandsFromTag(BuildRoutine routine_info,
          }
          else
          {
-            string[] strings = LoadStringArrayFromTag(routine_info, build_info, version_info, json_value);
+            string[] strings = LoadStringArrayFromTag(routine_info, build_info, version_info, json_value, replace_additions, str_attrib_group);
             
             if(strings == null)
                continue;
@@ -1878,27 +1742,45 @@ void CopyItem(string source, string destination)
       if(!exists(dest_directory))
          mkdirRecurse(dest_directory);
    
-      //if(isFile(source))
       if(exists(source))
          copy(source, destination, PreserveAttributes.no);
          
    } catch {} 
 }
 
+void CopyMatchingItems_internal(string source, string destination, string begining, string ending, int depth)
+{
+   if(isDir(source))
+   {
+      foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
+      {
+         string entry_path = e.name().replace(source, "");
+         
+         if(entry_path.startsWith("\\") || entry_path.startsWith("/"))
+            entry_path = entry_path[1 .. $];
+         
+         if(e.isDir() && ((depth - 1) >= 0))
+         {
+            CopyMatchingItems_internal(e.name(), destination ~ e.name().replace(source, ""), begining, ending, depth - 1);
+         }
+         
+         if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
+         {
+            if(!exists(destination))
+               mkdirRecurse(destination);
+               
+            CopyItem(e.name(), destination ~ e.name().replace(source, ""));
+         }
+      }
+   }
+}
+
 void CopyFolderContents(string source, string destination, string begining = "", string ending = "")
 {
    try
    {
-      if(isDir(source))
-      {
-         foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
-         {
-            string entry_path = e.name()[e.name().lastIndexOf("/") + 1 .. $];
-            
-            if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
-               CopyItem(e.name(), destination ~ e.name().replace(source, ""));
-         }
-      }
+      int depth = 1; //TODO: allow passing of depth
+      CopyMatchingItems_internal(source, destination, begining, ending, depth);
    } catch {}
 }
 
@@ -1906,31 +1788,44 @@ void DeleteItem(string path)
 {
    try
    {
-      //if(isFile(path))
       if(exists(path))
          remove(path);
 
    } catch {} 
 }
 
+void DeleteMatchingItems_internal(string path, string begining, string ending, int depth)
+{
+   if(isDir(path))
+   {
+      foreach(DirEntry e; dirEntries(path, SpanMode.shallow))
+      {
+         string entry_path = e.name().replace(path, "");
+         
+         if(entry_path.startsWith("\\") || entry_path.startsWith("/"))
+            entry_path = entry_path[1 .. $];
+         
+         if(e.isDir() && ((depth - 1) >= 0))
+         {
+            DeleteMatchingItems_internal(e.name(), begining, ending, depth - 1);
+         }
+         
+         if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
+            DeleteItem(e.name());
+      }
+   }
+}
+
 void DeleteFolderContents(string path, string begining = "", string ending = "")
 {
    try
    {
-      if(isDir(path))
-      {
-         foreach(DirEntry e; dirEntries(path, SpanMode.shallow))
-         {
-            string entry_path = e.name()[e.name().lastIndexOf("/") + 1 .. $];
-         
-            if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
-               DeleteItem(e.name());
-         }
-      }
+      int depth = 0;
+      DeleteMatchingItems_internal(path, begining, ending, depth);
    } catch {}
 }
 
-void WriteMsg(T...)(T args)
+void DontWriteMsg(T...)(T args)
 {
    static if(DEBUG_PRINTING)
    {
@@ -1938,10 +1833,15 @@ void WriteMsg(T...)(T args)
    }
 }
 
+void DownloadFile(string source, string dest)
+{
+   download(source, dest);
+}
+
 void Build(string output_folder, BuildRoutine routine_info, BuildInformation build_info, VersionInformation version_info)
 {
    string temp_dir = routine_info.directory ~ build_info.project_name ~ "_" ~ routine_info.name ~ "_" ~ randomUUID().toString();
-   string file_ending = GetLanguageFileEnding(routine_info.global_config_path, build_info.language, build_info.type);
+   string file_ending = GetLanguageFileEnding(routine_info.platform_config_path, build_info.language, build_info.type);
    string version_string = GetVersionString(version_info);
                            
    string output_file_name = build_info.project_name ~ 
@@ -2012,7 +1912,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    string[] command_templates = LoadStringArrayFromTag(routine_info,
                                                        build_info,
                                                        version_info,
-                                                       GetLanguageCommandTag(routine_info.global_config_path, build_info.language, build_info.type));
+                                                       GetLanguageCommandTag(routine_info.platform_config_path, build_info.language, build_info.type));
    
    foreach(string command_template; command_templates)
    {
@@ -2027,6 +1927,16 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       {
          command_batch = command_batch ~ " && ( " ~ command ~ " )";
       }
+   }
+   
+   command_batch = "(" ~ command_batch ~ ")";
+   
+   if(!build_info.print_build_progress)
+   {
+      /*
+      command_batch = command_batch ~ " > nul"; //cmd
+      command_batch = command_batch ~ " > /dev/null"; //bash
+      */
    }
    
    system(toStringz(command_batch));

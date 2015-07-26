@@ -21,8 +21,6 @@ TO DO:
    -specify platforms & host in the platform config on a per language basis
    -allow any value to use field cross references
    
-   -silent build
-   
 TO ADD(Features):
    -option to specify what architectures to build for on a per project basis
    -ability to download dependencies/sources (git or http)
@@ -98,7 +96,7 @@ struct BuildInformation
    string project_name;
    string[][string] attributes;
    FileDescription[] dependencies;
-   bool print_build_progress;
+   bool silent_build;
 }
 
 struct BuildRoutine
@@ -122,9 +120,12 @@ struct CommandInformation
    string[] params;
 }
 
+const bool default_build_silent = false;
+
 void LaunchConfig(string default_platform_config_path,
                   string config_file_path,
-                  string[] args)
+                  string[] args,
+                  bool inhereted_build_silent = default_build_silent)
 {
    if(exists(config_file_path ~ ".new"))
    {
@@ -135,7 +136,7 @@ void LaunchConfig(string default_platform_config_path,
    
    VersionType version_type = VersionType.None; 
    string platform_config_path = default_platform_config_path;
-   bool print_build_progress = true;
+   bool silent_build = default_build_silent;
    
    for(int i = 0; args.length > i; ++i)
    {
@@ -172,7 +173,13 @@ void LaunchConfig(string default_platform_config_path,
             
             case "-silent":
             {
-               print_build_progress = false;
+               silent_build = true;
+            }
+            break;
+            
+            case "-pSilent":
+            {
+               silent_build = inhereted_build_silent;
             }
             break;
             
@@ -184,17 +191,17 @@ void LaunchConfig(string default_platform_config_path,
       else
       {
          function_called = true;
-         RunRoutine(config_file_path, argument, platform_config_path, version_type, print_build_progress);
+         RunRoutine(config_file_path, argument, platform_config_path, version_type, silent_build);
          
          version_type = VersionType.None; 
          platform_config_path = default_platform_config_path;
-         print_build_progress = true;
+         silent_build = default_build_silent;
       }
    }
    
    if(!function_called)
    {
-      RunRoutine(config_file_path, GetDefaultRoutine(config_file_path), platform_config_path, version_type, print_build_progress);
+      RunRoutine(config_file_path, GetDefaultRoutine(config_file_path), platform_config_path, version_type, silent_build);
    }
 }
 
@@ -249,7 +256,7 @@ string GetDefaultRoutine(string file_path)
    return null;
 }
 
-void RunRoutine(string file_path, string routine_name, string default_platform_config_path, VersionType version_type, bool print_build_progress)
+void RunRoutine(string file_path, string routine_name, string default_platform_config_path, VersionType version_type, bool silent_build)
 {
    WriteMsg("Executing routine ", routine_name, " in ", file_path);
 
@@ -290,7 +297,7 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
       build_info.platform = GetHost(routine_info.platform_config_path);
       build_info.platform.optimized = true;
       build_info.dependencies = null;
-      build_info.print_build_progress = print_build_progress;
+      build_info.silent_build = silent_build;
       
       VersionInformation version_info;
       version_info.type = version_type;
@@ -593,7 +600,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
                break;
             
             case "call":
-               CallOperation(routine, operation_params);
+               CallOperation(routine, build_info, operation_params);
                break;
             
             case "cmd":
@@ -652,7 +659,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
       
       string[string] replace_additions;
       replace_additions["[OUTPUT_DIRECTORY]"] = output_directory;
-      writeln(replace_additions["[OUTPUT_DIRECTORY]"]);
+      WriteMsg(replace_additions["[OUTPUT_DIRECTORY]"]);
       
       CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json, replace_additions);
       
@@ -703,7 +710,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
                break;
             
             case "call":
-               CallOperation(routine, operation_params);
+               CallOperation(routine, build_info, operation_params);
                break;
             
             case "cmd":
@@ -910,7 +917,7 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    }
 }
 
-void CallOperation(BuildRoutine routine_info, string[] params)
+void CallOperation(BuildRoutine routine_info, BuildInformation build_info, string[] params)
 {
    WriteMsg("Executing calls:");
    
@@ -926,7 +933,8 @@ void CallOperation(BuildRoutine routine_info, string[] params)
       
       LaunchConfig(default_platform_config_path,
                    config_file_path,
-                   params[1 .. $]);
+                   params[1 .. $],
+                   build_info.silent_build);
    }
 }
 
@@ -1484,6 +1492,11 @@ bool HandleConditional(BuildRoutine routine_info,
          return (value == to!string(build_info.platform.optimized));
       }
       
+      case "SILENT=":
+      {
+         return (value == to!string(build_info.silent_build));
+      }
+      
       default:
    }
    
@@ -1928,7 +1941,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    string version_string = GetVersionString(version_info);
                            
    string output_file_name = build_info.project_name ~ 
-                             (version_info.is_versioned ? version_info.breakS ~ version_string : "");
+                             (version_info.is_versioned ? (version_info.breakS ~ version_string) : "");
    
    mkdirRecurse(temp_dir);
    
@@ -1946,7 +1959,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       
       foreach(FileDescription source; source_folders)
       {
-         writeln("Src " ~ PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
+         WriteMsg("Src " ~ PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
          
          if((source.begining != "") || (source.ending != ""))
          {
@@ -1967,7 +1980,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       {
          if(exists(PathF(dep.path, routine_info)))
          {
-            writeln("FDep " ~ PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
+            WriteMsg("FDep " ~ PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
             
             if((dep.begining != "") || (dep.ending != ""))
             {
@@ -1980,7 +1993,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          }
          else
          {
-            writeln("LDep " ~ dep.path);
+            WriteMsg("LDep " ~ dep.path);
             
             if(!dependencies.canFind(" " ~ dep.path))
                dependencies = dependencies ~ " " ~ dep.path;
@@ -2014,12 +2027,16 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    
    command_batch = "(" ~ command_batch ~ ")";
    
-   if(!build_info.print_build_progress)
+   if(build_info.silent_build)
    {
-      /*
-      command_batch = command_batch ~ " > nul"; //cmd
-      command_batch = command_batch ~ " > /dev/null"; //bash
-      */
+      version(Windows)
+      {
+         command_batch = command_batch ~ " > nul";
+      }
+      else
+      {
+         command_batch = command_batch ~ " > /dev/null";
+      }
    }
    
    system(toStringz(command_batch));

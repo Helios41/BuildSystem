@@ -5,8 +5,8 @@
       "language": "C",
       "operations":
       [
-         ["call", "./make_dl.json"],
-         ["||", "./make_lib.json"],
+         ["call", "./make_dl.json", "-pSilent"],
+         ["||", "./make_lib.json", "-pSilent"],
          ["copy", "../dub.json", "../bob.json"],
          ["||", "../", "../test/", ".random"],         
          ["delete", "../toremove.txt"],

@@ -16,11 +16,11 @@
                "cd [BUILD_DIRECTORY]",
                {
                   "if": "ARCH=X86",
-                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86"
+                  "then": "vcvarsall x86"
                },
                {
                   "if": "ARCH=X86_64",
-                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64"
+                  "then": "vcvarsall x86_amd64"
                },
                {
                   "if": "OPT=true",
@@ -37,11 +37,11 @@
                "cd [BUILD_DIRECTORY]",
                {
                   "if": "ARCH=X86",
-                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86"
+                  "then": "vcvarsall x86"
                },
                {
                   "if": "ARCH=X86_64",
-                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64"
+                  "then": "vcvarsall x86_amd64"
                },
                "echo LIBRARY [PROJECT_NAME] > ./exports.def",
                "echo EXPORTS >> ./exports.def",
@@ -62,11 +62,11 @@
                "cd [BUILD_DIRECTORY]",
                {
                   "if": "ARCH=X86",
-                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86"
+                  "then": "vcvarsall x86"
                },
                {
                   "if": "ARCH=X86_64",
-                  "then": "\"C:/Program Files (x86)/Microsoft Visual Studio 12.0/VC/vcvarsall\" x86_amd64"
+                  "then": "vcvarsall x86_amd64"
                },
                {
                   "if": "OPT=true",

@@ -15,12 +15,13 @@ TO DO:
    -Clean up code & comments
    -documentation
    -default platform configs
-   -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
    -redesign field cross references
    
    -either build for host, all available or specified platforms (default host only)
    -specify platforms & host in the platform config on a per language basis
    -allow any value to use field cross references
+   
+   -silent build
    
 TO ADD(Features):
    -option to specify what architectures to build for on a per project basis
@@ -32,6 +33,7 @@ TO FIX:
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
    -Is setting the platform to the host for the regular operations the right thing to do?
+   -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
 */
 
 /**
@@ -794,8 +796,30 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    }
    else if(params.length == 4)
    {
+      if(IsValidInt(params[3]))
+      {
+         WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
+      }
+      else
+      {
+         WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+      }
+   }
+   else if(params.length == 5)
+   {
       WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+      
+      if(IsValidInt(params[4]))
+      {
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
+      }
+      else
+      {
+         writeln(params[4], " failed to convert from string to int!");
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+      }
    }
 }
 
@@ -813,8 +837,29 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
    }
    else if(params.length == 3)
    {
-      WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
-      DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2]);
+      if(IsValidInt(params[2]))
+      {
+         WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
+         DeleteFolderContents(PathF(params[0], routine_info), "", params[1], to!int(params[2]));
+      }
+      else
+      {
+         WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
+         DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2]);
+      }
+   }
+   else if(params.length == 4)
+   {
+      if(IsValidInt(params[3]))
+      {
+         WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
+         DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2], to!int(params[3]));
+      }
+      else
+      {
+         writeln(params[3], " failed to convert from string to int!");
+         DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2]);
+      }
    }
 }
 
@@ -830,13 +875,38 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    {
       WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
       CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
-      DeleteFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info));
+      DeleteFolderContents(PathF(params[0], routine_info), "", params[2]);
    }
    else if(params.length == 4)
    {
+      if(IsValidInt(params[3]))
+      {
+         WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
+         DeleteFolderContents(PathF(params[0], routine_info), "", params[2], to!int(params[3]));
+      }
+      else
+      {
+         WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         DeleteFolderContents(PathF(params[0], routine_info), params[2], params[3]);
+      }
+   }
+   else if(params.length == 5)
+   {
       WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
-      DeleteFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info));
+   
+      if(IsValidInt(params[4]))
+      {
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
+         DeleteFolderContents(PathF(params[0], routine_info), params[2], params[3], to!int(params[4]));
+      }
+      else
+      {
+         writeln(params[4], " failed to convert from string to int!");
+         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         DeleteFolderContents(PathF(params[0], routine_info), params[2], params[3]);
+      }
    }
 }
 
@@ -1454,7 +1524,7 @@ string ProcessTag(BuildRoutine routine_info,
    }
    
    //TODO: fix this properly, this is temporary
-   if(build_info.language != "")
+   if(build_info.can_build)
    {
       foreach(string optional_attrib_name; GetLanguageOptionalAttribs(routine_info.platform_config_path, build_info.language, build_info.type))
       {
@@ -1775,11 +1845,10 @@ void CopyMatchingItems_internal(string source, string destination, string begini
    }
 }
 
-void CopyFolderContents(string source, string destination, string begining = "", string ending = "")
+void CopyFolderContents(string source, string destination, string begining = "", string ending = "", int depth = 0)
 {
    try
    {
-      int depth = 1; //TODO: allow passing of depth
       CopyMatchingItems_internal(source, destination, begining, ending, depth);
    } catch {}
 }
@@ -1816,11 +1885,10 @@ void DeleteMatchingItems_internal(string path, string begining, string ending, i
    }
 }
 
-void DeleteFolderContents(string path, string begining = "", string ending = "")
+void DeleteFolderContents(string path, string begining = "", string ending = "", int depth = 0)
 {
    try
    {
-      int depth = 0;
       DeleteMatchingItems_internal(path, begining, ending, depth);
    } catch {}
 }
@@ -1835,7 +1903,22 @@ void DontWriteMsg(T...)(T args)
 
 void DownloadFile(string source, string dest)
 {
+   //http://curl.haxx.se/libcurl/
    download(source, dest);
+}
+
+bool IsValidInt(string str)
+{
+   try
+   {
+      int i = to!int(str);
+      
+      return true;
+   }
+   catch(ConvException e)
+   {
+      return false;
+   }
 }
 
 void Build(string output_folder, BuildRoutine routine_info, BuildInformation build_info, VersionInformation version_info)

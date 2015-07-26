@@ -29,8 +29,8 @@
       "per-operations":
       [
          ["copy", "../dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
-         ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json"],
-         ["||", "../", "[OUTPUT_DIRECTORY]/djson/", "d", ".json"],
+         ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json", "1"],
+         ["||", "../", "[OUTPUT_DIRECTORY]/djson/", "d", ".json", "1"],
          ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"],
          "build"
       ],

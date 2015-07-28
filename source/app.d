@@ -85,11 +85,9 @@ struct BuildInformation
    bool can_build;
    string type;
    string language;
-   FileDescription[] source_folders;
    string build_folder;
    string project_name;
    string[][string] attributes;
-   FileDescription[] dependencies;
    bool silent_build;
 }
 
@@ -284,12 +282,10 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
       build_info.language = "";
       build_info.type = "";
       build_info.can_build = true;
-      build_info.source_folders = null;
       build_info.build_folder = "";
       build_info.project_name = "";
       build_info.platform = GetHost(routine_info.platform_config_path);
       build_info.platform.optimized = true;
-      build_info.dependencies = null;
       build_info.silent_build = silent_build;
       
       VersionInformation version_info;
@@ -331,58 +327,6 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
             build_info.type = routine_json["type"].str();
          }
       }      
-      else
-      {
-         build_info.can_build = false;
-      }
-      
-      if(HasJSON(routine_json, "source"))
-      {
-         JSONValue source_json = routine_json["source"];
-         build_info.source_folders = new FileDescription[JSONArraySize(source_json)];
-         
-         if(source_json.type() == JSON_TYPE.STRING)
-         {
-            build_info.source_folders[0].path = routine_json["source"].str();
-         }
-         else if(source_json.type() == JSON_TYPE.ARRAY)
-         {
-            int index = 0;
-         
-            foreach(JSONValue value; routine_json["source"].array)
-            {
-               if(value.type() == JSON_TYPE.STRING)
-               {
-                  build_info.source_folders[index].path = value.str();
-                  ++index;
-               }
-               else if(value.type() == JSON_TYPE.ARRAY)
-               {
-                  if(value.array.length == 2)
-                  {
-                     if((value[0].type() == JSON_TYPE.STRING) && (value[1].type() == JSON_TYPE.STRING))
-                     {
-                        build_info.source_folders[index].path = value[0].str();
-                        build_info.source_folders[index].ending = value[1].str();
-                        ++index;
-                     }
-                  }
-                  else if(value.array.length == 3)
-                  {
-                     if((value[0].type() == JSON_TYPE.STRING) && 
-                        (value[1].type() == JSON_TYPE.STRING) &&
-                        (value[2].type() == JSON_TYPE.STRING))
-                     {
-                        build_info.source_folders[index].path = value[0].str();
-                        build_info.source_folders[index].begining = value[1].str();
-                        build_info.source_folders[index].ending = value[2].str();
-                        ++index;
-                     }
-                  }
-               }
-            }
-         }
-      }
       else
       {
          build_info.can_build = false;
@@ -485,59 +429,6 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
                }
             }
          }
-      }
-      
-      if(HasJSON(routine_json, "dependencies"))
-      {
-         JSONValue dependencies_json = routine_json["dependencies"];
-         build_info.dependencies = new FileDescription[JSONArraySize(dependencies_json)];
-         
-         if(dependencies_json.type() == JSON_TYPE.STRING)
-         {
-            build_info.dependencies[0].path = dependencies_json.str();
-         }
-         else if(dependencies_json.type() == JSON_TYPE.ARRAY)
-         {
-            int index = 0;
-         
-            foreach(JSONValue value; dependencies_json.array)
-            {
-               if(value.type() == JSON_TYPE.STRING)
-               {
-                  build_info.dependencies[index].path = value.str();
-                  ++index;
-               }
-               else if(value.type() == JSON_TYPE.ARRAY)
-               {
-                  if(value.array.length == 2)
-                  {
-                     if((value[0].type() == JSON_TYPE.STRING) && (value[1].type() == JSON_TYPE.STRING))
-                     {
-                        build_info.dependencies[index].path = value[0].str();
-                        build_info.dependencies[index].ending = value[1].str();
-                        ++index;
-                     }
-                  }
-                  else if(value.array.length == 3)
-                  {
-                     if((value[0].type() == JSON_TYPE.STRING) && 
-                        (value[1].type() == JSON_TYPE.STRING) &&
-                        (value[2].type() == JSON_TYPE.STRING))
-                     {
-                        build_info.dependencies[index].path = value[0].str();
-                        build_info.dependencies[index].begining = value[1].str();
-                        build_info.dependencies[index].ending = value[2].str();
-                        ++index;
-                     }
-                  }
-               }
-            }
-         }
-      }
-      else
-      {
-         build_info.dependencies = new FileDescription[1];
-         build_info.dependencies[0].path = "";
       }
       
       ExecuteOperations(routine_info, build_info, version_info);
@@ -2032,17 +1923,10 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       string command = command_template.replace("[BUILD_DIRECTORY]", temp_dir)
                                        .replace("[DEPENDENCIES]", dependencies);
    
-      if(command_batch == "")
-      {
-         command_batch = command_batch ~ " ( " ~ command ~ " )";
-      }
-      else
-      {
-         command_batch = command_batch ~ " && ( " ~ command ~ " )";
-      }
+      command_batch = command_batch ~ " && ( " ~ command ~ " )";
    }
    
-   command_batch = "(" ~ command_batch ~ ")";
+   command_batch = "(" ~ command_batch[4 .. $] ~ ")";
    
    if(build_info.silent_build)
    {

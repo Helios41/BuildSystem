@@ -688,19 +688,19 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 3)
    {
       WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
+      CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
    }
    else if(params.length == 4)
    {
       if(IsValidInt(params[3]))
       {
          WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
       }
       else
       {
          WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
       }
    }
    else if(params.length == 5)
@@ -709,12 +709,12 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
       
       if(IsValidInt(params[4]))
       {
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
       }
       else
       {
          writeln(params[4], " failed to convert from string to int!");
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
       }
    }
 }
@@ -729,19 +729,19 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 2)
    {
       WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
-      DeleteFolderContents(PathF(params[0], routine_info), "", params[1]);
+      DeleteMatchingItems(PathF(params[0], routine_info), "", params[1]);
    }
    else if(params.length == 3)
    {
       if(IsValidInt(params[2]))
       {
          WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
-         DeleteFolderContents(PathF(params[0], routine_info), "", params[1], to!int(params[2]));
+         DeleteMatchingItems(PathF(params[0], routine_info), "", params[1], to!int(params[2]));
       }
       else
       {
          WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
-         DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2]);
+         DeleteMatchingItems(PathF(params[0], routine_info), params[1], params[2]);
       }
    }
    else if(params.length == 4)
@@ -749,12 +749,12 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
       if(IsValidInt(params[3]))
       {
          WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
-         DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2], to!int(params[3]));
+         DeleteMatchingItems(PathF(params[0], routine_info), params[1], params[2], to!int(params[3]));
       }
       else
       {
          writeln(params[3], " failed to convert from string to int!");
-         DeleteFolderContents(PathF(params[0], routine_info), params[1], params[2]);
+         DeleteMatchingItems(PathF(params[0], routine_info), params[1], params[2]);
       }
    }
 }
@@ -770,22 +770,22 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    else if(params.length == 3)
    {
       WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
-      DeleteFolderContents(PathF(params[0], routine_info), "", params[2]);
+      CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
+      DeleteMatchingItems(PathF(params[0], routine_info), "", params[2]);
    }
    else if(params.length == 4)
    {
       if(IsValidInt(params[3]))
       {
          WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
-         DeleteFolderContents(PathF(params[0], routine_info), "", params[2], to!int(params[3]));
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
+         DeleteMatchingItems(PathF(params[0], routine_info), "", params[2], to!int(params[3]));
       }
       else
       {
          WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
-         DeleteFolderContents(PathF(params[0], routine_info), params[2], params[3]);
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         DeleteMatchingItems(PathF(params[0], routine_info), params[2], params[3]);
       }
    }
    else if(params.length == 5)
@@ -794,14 +794,14 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    
       if(IsValidInt(params[4]))
       {
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
-         DeleteFolderContents(PathF(params[0], routine_info), params[2], params[3], to!int(params[4]));
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
+         DeleteMatchingItems(PathF(params[0], routine_info), params[2], params[3], to!int(params[4]));
       }
       else
       {
          writeln(params[4], " failed to convert from string to int!");
-         CopyFolderContents(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
-         DeleteFolderContents(PathF(params[0], routine_info), params[2], params[3]);
+         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         DeleteMatchingItems(PathF(params[0], routine_info), params[2], params[3]);
       }
    }
 }
@@ -1780,7 +1780,7 @@ void CopyMatchingItems_internal(string source, string destination, string begini
    }
 }
 
-void CopyFolderContents(string source, string destination, string begining = "", string ending = "", int depth = 0)
+void CopyMatchingItems(string source, string destination, string begining = "", string ending = "", int depth = 0)
 {
    try
    {
@@ -1820,7 +1820,7 @@ void DeleteMatchingItems_internal(string path, string begining, string ending, i
    }
 }
 
-void DeleteFolderContents(string path, string begining = "", string ending = "", int depth = 0)
+void DeleteMatchingItems(string path, string begining = "", string ending = "", int depth = 0)
 {
    try
    {
@@ -1840,6 +1840,7 @@ void DownloadFile(string source, string dest)
 {
    string curl_download_command = ("curl \"" ~ source ~ "\" -o \"" ~ dest ~ "\" 1> nul 2> nul");
    writeln(curl_download_command);
+   //TODO: re-enable this once ready!
    //system(toStringz(curl_download_command));
 }
 
@@ -1902,7 +1903,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
          {
             if((source.begining != "") || (source.ending != ""))
             {
-               CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+               CopyMatchingItems(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
             }
             else
             {
@@ -1931,7 +1932,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
                
                if((dep.begining != "") || (dep.ending != ""))
                {
-                  CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+                  CopyMatchingItems(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
                }
                else
                {

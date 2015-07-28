@@ -8,84 +8,81 @@
    {
       "C":
       {
-         "executable": 
+         "platforms":
+         [
+            "Windows", ["X86_64", "X86"]
+         ],
+         "host": ["Windows", "X86_64"],
+         "types":
          {
-            "ending": ".exe",
-            "commands":
-            [  
-               "cd [BUILD_DIRECTORY]",
-               {
-                  "if": "ARCH=X86",
-                  "then": "vcvarsall x86"
-               },
-               {
-                  "if": "ARCH=X86_64",
-                  "then": "vcvarsall x86_amd64"
-               },
-               {
-                  "if": "OPT=true",
-                  "then": "cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]",
-                  "else": "cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]"
-               }
-            ]
-         },
-         "dynamic": 
-         {
-            "ending": ".dll",
-            "commands":
-            [
-               "cd [BUILD_DIRECTORY]",
-               {
-                  "if": "ARCH=X86",
-                  "then": "vcvarsall x86"
-               },
-               {
-                  "if": "ARCH=X86_64",
-                  "then": "vcvarsall x86_amd64"
-               },
-               "echo LIBRARY [PROJECT_NAME] > ./exports.def",
-               "echo EXPORTS >> ./exports.def",
-               "for /f %a in (\"[ATTRIB: exports]\") do ( echo \t %a >> ./exports.def )",
-               {
-                  "if": "OPT=true",
-                  "then": "cl /O2 /c *.c",
-                  "else": "cl /Od /c *.c"
-               },
-               "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj *.lib [DEPENDENCIES]"
-            ]
-         },
-         "static": 
-         {
-            "ending": ".lib",
-            "commands":
-            [
-               "cd [BUILD_DIRECTORY]",
-               {
-                  "if": "ARCH=X86",
-                  "then": "vcvarsall x86"
-               },
-               {
-                  "if": "ARCH=X86_64",
-                  "then": "vcvarsall x86_amd64"
-               },
-               {
-                  "if": "OPT=true",
-                  "then": "cl /O2 /c *.c",
-                  "else": "cl /Od /c *.c"
-               },
-               "lib /out:[PROJECT_NAME].lib *.obj"
-            ]
-         }
-      },
-      "D":
-      {
-         "executable":
-         {
-            "ending": ".exe",
-            "commands":
-            [
-               "dub"
-            ]
+            "executable": 
+            {
+               "ending": ".exe",
+               "commands":
+               [  
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "ARCH=X86",
+                     "then": "vcvarsall x86"
+                  },
+                  {
+                     "if": "ARCH=X86_64",
+                     "then": "vcvarsall x86_amd64"
+                  },
+                  {
+                     "if": "OPT=true",
+                     "then": "cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]",
+                     "else": "cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]"
+                  }
+               ]
+            },
+            "dynamic": 
+            {
+               "ending": ".dll",
+               "commands":
+               [
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "ARCH=X86",
+                     "then": "vcvarsall x86"
+                  },
+                  {
+                     "if": "ARCH=X86_64",
+                     "then": "vcvarsall x86_amd64"
+                  },
+                  "echo LIBRARY [PROJECT_NAME] > ./exports.def",
+                  "echo EXPORTS >> ./exports.def",
+                  "for /f %a in (\"[ATTRIB: exports]\") do ( echo \t %a >> ./exports.def )",
+                  {
+                     "if": "OPT=true",
+                     "then": "cl /O2 /c *.c",
+                     "else": "cl /Od /c *.c"
+                  },
+                  "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj *.lib [DEPENDENCIES]"
+               ]
+            },
+            "static": 
+            {
+               "ending": ".lib",
+               "commands":
+               [
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "ARCH=X86",
+                     "then": "vcvarsall x86"
+                  },
+                  {
+                     "if": "ARCH=X86_64",
+                     "then": "vcvarsall x86_amd64"
+                  },
+                  {
+                     "if": "OPT=true",
+                     "then": "cl /O2 /c *.c",
+                     "else": "cl /Od /c *.c"
+                  },
+                  "lib /out:[PROJECT_NAME].lib *.obj"
+               ]
+            }
          }
       }
    }

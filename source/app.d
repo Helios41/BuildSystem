@@ -4,6 +4,7 @@ import std.string;
 import std.json;
 import std.array;
 import std.algorithm.searching;
+import std.algorithm.comparison;
 import std.c.stdlib;
 import std.uuid;
 import std.conv;
@@ -11,19 +12,17 @@ import std.container;
 import std.net.curl : download;
 
 /**
-TO DO:
+TO DO:   
+   -redesign field cross references (allow any value to use field cross references)
+   -either build for host, all available or specified platforms (default host only)
+   -specify platforms & host in the platform config on a per language basis? (If not move types out of "types" obj)
+   -ability to download dependencies/sources (git or http)
+   
    -Clean up code & comments
    -documentation
    -default platform configs
-   -redesign field cross references
    
-   -either build for host, all available or specified platforms (default host only)
-   -specify platforms & host in the platform config on a per language basis
-   -allow any value to use field cross references
-   
-TO ADD(Features):
-   -option to specify what architectures to build for on a per project basis
-   -ability to download dependencies/sources (git or http)
+   -make the dll build script use /EXPORT instead of a .def & use delayed variable expansion
    
 TO FIX:
    -Why is that folder created in the temporary directory?
@@ -32,11 +31,6 @@ NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
    -Is setting the platform to the host for the regular operations the right thing to do?
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
-*/
-
-/**
-        Field Cross Reference format
-[FIELD_REF: _field_name_<-_file_:_routine_optional_]
 */
 
 const bool DEBUG_PRINTING = false;
@@ -107,11 +101,10 @@ struct BuildRoutine
    string platform_config_path;
 }
 
-struct FieldCrossReference
+struct ExternalVariable
 {
-   string field;
-   string tag;
-   BuildRoutine routine;
+   string declare;
+   string value;
 }
 
 struct CommandInformation
@@ -232,7 +225,7 @@ string GetDefaultRoutine(string file_path)
 {
    WriteMsg("Finding default routine of ", file_path);
 
-   if(!isFile(file_path))
+   if((!exists(file_path)) || (!isFile(file_path)))
    {
       writeln(file_path ~ " not found!");
       exit(-1);
@@ -260,7 +253,7 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
 {
    WriteMsg("Executing routine ", routine_name, " in ", file_path);
 
-   if(!isFile(file_path))
+   if((!exists(file_path)) || (!isFile(file_path)))
    {
       writeln(file_path ~ " not found!");
       exit(-1);
@@ -1127,12 +1120,17 @@ JSONValue GetLanguageCommandTag(string file_path, string language_name, string b
    
    JSONValue language_json = GetLanguageJSON(file_path, language_name);
    
-   if(HasJSON(language_json, build_type))
+   if(HasJSON(language_json, "types"))
    {
-      JSONValue build_type_json = language_json[build_type];
-      
-      if(HasJSON(build_type_json, "commands"))
-         return build_type_json["commands"];
+      JSONValue types_json = language_json["types"];
+   
+      if(HasJSON(types_json, build_type))
+      {
+         JSONValue build_type_json = types_json[build_type];
+         
+         if(HasJSON(build_type_json, "commands"))
+            return build_type_json["commands"];
+      }
    }
    
    writeln("Platform config missing commands for language ", language_name, "(", build_type, ")");
@@ -1148,31 +1146,36 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
    JSONValue language_json = GetLanguageJSON(file_path, language_name);
    string[] output = null;
    
-   if(HasJSON(language_json, build_type))
+   if(HasJSON(language_json, "types"))
    {
-      JSONValue build_type_json = language_json[build_type];
-      
-      if(HasJSON(build_type_json, "commands"))
+      JSONValue types_json = language_json["types"];
+   
+      if(HasJSON(types_json, build_type))
       {
-         JSONValue commands_json = build_type_json["commands"];
+         JSONValue build_type_json = types_json[build_type];
          
-         if(commands_json.type() == JSON_TYPE.ARRAY)
+         if(HasJSON(build_type_json, "commands"))
          {
-            output = new string[commands_json.array.length];
-            int index = 0;
+            JSONValue commands_json = build_type_json["commands"];
             
-            foreach(JSONValue command_json; commands_json.array)
+            if(commands_json.type() == JSON_TYPE.ARRAY)
             {
-               if(command_json.type() == JSON_TYPE.STRING)
-                  output[index++] = command_json.str();
+               output = new string[commands_json.array.length];
+               int index = 0;
+               
+               foreach(JSONValue command_json; commands_json.array)
+               {
+                  if(command_json.type() == JSON_TYPE.STRING)
+                     output[index++] = command_json.str();
+               }
             }
          }
       }
-   }
-   else
-   {
-      writeln("Platform config missing commands for language ", language_name, "(", build_type, ")");
-      exit(-1);
+      else
+      {
+         writeln("Platform config missing commands for language ", language_name, "(", build_type, ")");
+         exit(-1);
+      }
    }
    
    return output;
@@ -1185,23 +1188,28 @@ string[] GetLanguageOptionalAttribs(string file_path, string language_name, stri
    JSONValue language_json = GetLanguageJSON(file_path, language_name);
    string[] output = null;
    
-   if(HasJSON(language_json, build_type))
+   if(HasJSON(language_json, "types"))
    {
-      JSONValue build_type_json = language_json[build_type];
-      
-      if(HasJSON(build_type_json, "optional"))
+      JSONValue types_json = language_json["types"];
+   
+      if(HasJSON(types_json, build_type))
       {
-         JSONValue optional_attribs_json = build_type_json["optional"];
+         JSONValue build_type_json = types_json[build_type];
          
-         if(optional_attribs_json.type() == JSON_TYPE.ARRAY)
+         if(HasJSON(build_type_json, "optional"))
          {
-            output = new string[optional_attribs_json.array.length];
-            int index = 0;
+            JSONValue optional_attribs_json = build_type_json["optional"];
             
-            foreach(JSONValue attrib_json; optional_attribs_json.array)
+            if(optional_attribs_json.type() == JSON_TYPE.ARRAY)
             {
-               if(attrib_json.type() == JSON_TYPE.STRING)
-                  output[index++] = attrib_json.str();
+               output = new string[optional_attribs_json.array.length];
+               int index = 0;
+               
+               foreach(JSONValue attrib_json; optional_attribs_json.array)
+               {
+                  if(attrib_json.type() == JSON_TYPE.STRING)
+                     output[index++] = attrib_json.str();
+               }
             }
          }
       }
@@ -1216,17 +1224,22 @@ string GetLanguageFileEnding(string file_path, string language_name, string buil
    
    JSONValue language_json = GetLanguageJSON(file_path, language_name);
    
-   if(HasJSON(language_json, build_type))
+   if(HasJSON(language_json, "types"))
    {
-      JSONValue build_type_json = language_json[build_type];
+      JSONValue types_json = language_json["types"];
       
-      if(HasJSON(build_type_json, "ending"))
+      if(HasJSON(types_json, build_type))
       {
-         JSONValue ending_json = build_type_json["ending"];
+         JSONValue build_type_json = types_json[build_type];
          
-         if(ending_json.type() == JSON_TYPE.STRING)
+         if(HasJSON(build_type_json, "ending"))
          {
-            return ending_json.str();
+            JSONValue ending_json = build_type_json["ending"];
+            
+            if(ending_json.type() == JSON_TYPE.STRING)
+            {
+               return ending_json.str();
+            }
          }
       }
    }
@@ -1284,75 +1297,86 @@ string[int][string] GetAvailablePlatforms(string file_path)
    return platforms;
 }
 
-string[] GetFieldFromRoutine(BuildRoutine routine, string field_name)
+/*
+   [EXTERN _file_>_routine_opt_>_var_]
+*/
+
+const string extern_decl_begin = "[EXTERN ";
+const string extern_decl_end = "]";
+
+ExternalVariable[] GetExternalVariables(BuildRoutine routine_info, 
+                                        BuildInformation build_info,
+                                        VersionInformation version_info,
+                                        string tag_str)
 {
-   JSONValue routine_json = GetRoutineJSON(routine);
-   string[] field_array = null;
+   int extern_var_count = min(tag_str.count(extern_decl_begin),
+                              tag_str.count(extern_decl_end));
    
-   if(HasJSON(routine_json, field_name))
+   ExternalVariable[] extern_vars = new ExternalVariable[extern_var_count];
+   int str_index = 0;
+   
+   for(int i = 0; i < extern_var_count; ++i)
    {
-      JSONValue field_json = routine_json[field_name];
+      int extern_index = tag_str.indexOf(extern_decl_begin, str_index);
+      int extern_end_index = tag_str.indexOf(extern_decl_end, extern_index);
+      string extern_decl = tag_str[extern_index .. extern_end_index + 1];
       
-      field_array = new string[JSONArraySize(field_json)];
-      JSONMapString(field_json, (string field_str, int i)
+      string file_path = extern_decl[extern_decl_begin.length .. extern_decl.indexOf(">")];
+      string routine_name;
+      string var_name;
+      
+      file_path = PathF(file_path, routine_info);
+      
+      if(extern_decl.count(">") == 2)
       {
-         field_array[i] = field_str;
-      });
+         routine_name = extern_decl[extern_decl.indexOf(">") + 1 .. extern_decl.lastIndexOf(">")];
+         var_name = extern_decl[extern_decl.lastIndexOf(">") + 1 .. $ - 1];
+      }
+      else if(extern_decl.count(">") == 1)
+      {
+         routine_name = GetDefaultRoutine(file_path);
+         var_name = extern_decl[extern_decl.lastIndexOf(">") + 1 .. $ - 1];
+      }
+      else
+      {
+         writeln("Invalid external variable: ", extern_decl);
+         assert(false);
+      }
+      
+      BuildRoutine extern_routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
+      JSONValue extern_json = GetRoutineJSON(extern_routine);
+      
+      ExternalVariable extern_var;
+      extern_var.declare = extern_decl;
+      extern_var.value = "";
+      
+      if(HasJSON(extern_json, var_name))
+      {
+         string[] extern_var_value_raw = LoadStringArrayFromTag(routine_info,
+                                                                build_info,
+                                                                version_info,
+                                                                extern_json[var_name]);
+         
+         if(extern_var_value_raw != null)
+         {
+            string extern_var_value = "";
+         
+            foreach(string str; extern_var_value_raw)
+            {
+               extern_var_value = extern_var_value ~ " " ~ str;
+            }
+            
+            extern_var_value = extern_var_value[1 .. $];
+            extern_var.value = extern_var_value;
+         }                                        
+      }
+      
+      extern_vars[i] = extern_var;
+      
+      str_index = extern_end_index;
    }
    
-   return field_array;
-}
-
-string GetFieldStringFromRoutine(BuildRoutine routine, string attrib_name)
-{
-   string[] attrib_array = GetFieldFromRoutine(routine, attrib_name);
-   string attrib_string = "";
-   
-   foreach(string attrib_element; attrib_array)
-   {
-      attrib_string = attrib_string ~ " " ~ attrib_element;
-   }
-   
-   return attrib_string;
-}
-
-bool IsFieldCrossReference(string attrib_tag)
-{
-   if(attrib_tag.canFind("[FIELD_REF: ") && 
-      attrib_tag.canFind("<-") && 
-      attrib_tag.canFind("]"))
-   {
-      return true;
-   }
-   
-   return false;
-}
-
-FieldCrossReference GetFieldCrossReference(BuildRoutine routine_info, string in_field_tag)
-{
-   string field_tag = in_field_tag[in_field_tag.indexOf("[FIELD_REF: ") + "[FIELD_REF: ".length .. $];
-   
-   string field_name = field_tag[0 .. field_tag.indexOf("<-")];
-   field_tag = field_tag[field_tag.indexOf("<-") + 2 .. $];
-   
-   int end_of_file_path = field_tag.indexOf(":") >= 0 ? field_tag.indexOf(":") : field_tag.indexOf("]");
-   string file_path = field_tag[0 .. end_of_file_path];
-   
-   FieldCrossReference fcr;
-   fcr.field = field_name;
-   fcr.tag = in_field_tag[in_field_tag.indexOf("[FIELD_REF: ") .. in_field_tag.indexOf("]") + 1];
-   
-   if(field_tag.canFind(":"))
-   {
-      string routine_name = field_tag[field_tag.indexOf(":") + 1 .. field_tag.indexOf("]")];
-      fcr.routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
-   }
-   else
-   {
-      fcr.routine = MakeRoutine(file_path, GetDefaultRoutine(PathF(file_path, routine_info)), routine_info.platform_config_path);
-   }
-   
-   return fcr;
+   return extern_vars;
 }
 
 BuildRoutine MakeRoutine(string file_path, string routine_name, string platform_config_path)
@@ -1545,16 +1569,9 @@ string ProcessTag(BuildRoutine routine_info,
       }
    }
       
-   if(IsFieldCrossReference(new_str))
+   foreach(ExternalVariable extern_var; GetExternalVariables(routine_info, build_info, version_info, new_str))
    {
-      FieldCrossReference fcr = GetFieldCrossReference(routine_info, new_str);
-      
-      BuildRoutine fcr_routine = fcr.routine;
-      fcr_routine.path = PathF(fcr.routine.path, routine_info);
-      fcr_routine.directory = PathF(fcr.routine.directory, routine_info);
-      
-      string field_string = GetFieldStringFromRoutine(fcr_routine, fcr.field);
-      new_str = new_str.replace(fcr.tag, field_string);
+      new_str = new_str.replace(extern_var.declare, extern_var.value);
    }
    
    return new_str;
@@ -2031,11 +2048,11 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    {
       version(Windows)
       {
-         command_batch = command_batch ~ " > nul";
+         command_batch = command_batch ~ " 1> nul 2> nul";
       }
       else
       {
-         command_batch = command_batch ~ " > /dev/null";
+         command_batch = command_batch ~ " 2>&1 > /dev/null";
       }
    }
    

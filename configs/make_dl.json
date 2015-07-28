@@ -13,7 +13,11 @@
       "attributes": ["exports"],
       "exports": 
       [
-         "add_integers_foo"
+         "add_integers_foo",
+         {
+            "if": "OS=Windows",
+            "then": "windows_foo"
+         }
       ],
       "optimized": false,
       "project": "DLTest"

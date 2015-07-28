@@ -31,8 +31,9 @@ Documentation:
       "-major" -> this is a major build
       "-minor" -> this is a minor build
       "-patch" -> this is a patch build
-      "-config" -> sets the platform configuration file path, overridden if the make configuration file
-                   specifies its own path for a platform configuration file
+      "-config" -> sets the platform configuration file path, overridden if the make 
+                   configuration file specifies its own path for a platform
+                   configuration file
       "-silent" -> silences the build process
       "-pSilent" -> silences the build process if the parent process was silences,
                     if no parent process then it is not silenced

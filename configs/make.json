@@ -39,6 +39,7 @@
       "build" : "../test/",
       "source": 
       [
+         ["Remote", "https://www.opengl.org/registry/api/GL/glext.h"],
          "../helloworld.c",
          ["../", ".h"]
       ],

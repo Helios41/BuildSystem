@@ -9,7 +9,6 @@ import std.c.stdlib;
 import std.uuid;
 import std.conv;
 import std.container;
-import std.net.curl : download;
 
 /**
 TO DO:   
@@ -72,11 +71,18 @@ struct PlatformInformation
    string OS;
 }
 
+enum FileType : string
+{
+   Local = "local",
+   Remote = "remote"
+}
+
 struct FileDescription
 {
    string path;
    string begining = "";
    string ending = "";
+   FileType type;
 }
 
 struct BuildInformation
@@ -214,9 +220,8 @@ void main(string[] args)
       std.file.write(default_platform_config_path, "{\n}");
       return;
    }
-   
-   if(args.length >= 2)
-      LaunchConfig(default_platform_config_path, config_file_path, args[2 .. $]);
+      
+   LaunchConfig(default_platform_config_path, config_file_path, args[2 .. $]);
 }
 
 string GetDefaultRoutine(string file_path)
@@ -1672,6 +1677,7 @@ FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info,
       foreach(JSONValue json_value; json.array)
       {
          FileDescription fdesc;
+         fdesc.type = FileType.Local; 
       
          if(json_value.type() == JSON_TYPE.STRING)
          {
@@ -1688,7 +1694,15 @@ FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info,
             
             if(strings.length == 2)
             {
-               fdesc.ending = strings[1];
+               if(IsValidFileType(strings[0]))
+               {
+                  fdesc.path = strings[1];
+                  fdesc.type = to!FileType(strings[0]);
+               }
+               else
+               {
+                  fdesc.ending = strings[1];
+               }
             }  
             else if(strings.length == 3)
             {
@@ -1824,8 +1838,9 @@ void DontWriteMsg(T...)(T args)
 
 void DownloadFile(string source, string dest)
 {
-   //http://curl.haxx.se/libcurl/
-   download(source, dest);
+   string curl_download_command = ("curl \"" ~ source ~ "\" -o \"" ~ dest ~ "\" 1> nul 2> nul");
+   writeln(curl_download_command);
+   //system(toStringz(curl_download_command));
 }
 
 bool IsValidInt(string str)
@@ -1833,6 +1848,20 @@ bool IsValidInt(string str)
    try
    {
       int i = to!int(str);
+      
+      return true;
+   }
+   catch(ConvException e)
+   {
+      return false;
+   }
+}
+
+bool IsValidFileType(string str)
+{
+   try
+   {
+      FileType t = to!FileType(str);
       
       return true;
    }
@@ -1869,13 +1898,21 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       {
          WriteMsg("Src " ~ PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
          
-         if((source.begining != "") || (source.ending != ""))
+         if(source.type == FileType.Local)
          {
-            CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+            if((source.begining != "") || (source.ending != ""))
+            {
+               CopyFolderContents(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+            }
+            else
+            {
+               CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $]);
+            }
          }
-         else
+         else if(source.type == FileType.Remote)
          {
-            CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.indexOf("/") + 1 .. $]);
+            string dest_path = temp_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $];
+            DownloadFile(source.path, dest_path);
          }
       }
    }
@@ -1886,25 +1923,33 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       
       foreach(FileDescription dep; dependency_items)
       {
-         if(exists(PathF(dep.path, routine_info)))
+         if(dep.type == FileType.Local)
          {
-            WriteMsg("FDep " ~ PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
-            
-            if((dep.begining != "") || (dep.ending != ""))
+            if(exists(PathF(dep.path, routine_info)))
             {
-               CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+               WriteMsg("FDep " ~ PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
+               
+               if((dep.begining != "") || (dep.ending != ""))
+               {
+                  CopyFolderContents(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+               }
+               else
+               {
+                  CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $]);
+               }
             }
             else
             {
-               CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.indexOf("/") + 1 .. $]);
+               WriteMsg("LDep " ~ dep.path);
+               
+               if(!dependencies.canFind(" " ~ dep.path))
+                  dependencies = dependencies ~ " " ~ dep.path;
             }
          }
-         else
+         else if(dep.type == FileType.Remote)
          {
-            WriteMsg("LDep " ~ dep.path);
-            
-            if(!dependencies.canFind(" " ~ dep.path))
-               dependencies = dependencies ~ " " ~ dep.path;
+            string dest_path = temp_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $];
+            DownloadFile(dep.path, dest_path);
          }
       }
    }

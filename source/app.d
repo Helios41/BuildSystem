@@ -12,7 +12,6 @@ import std.container;
 
 /**
 TO DO:   
-   -redesign field cross references (allow any value to use field cross references)
    -either build for host, all available or specified platforms (default host only)
    -specify platforms & host in the platform config on a per language basis? (If not move types out of "types" obj)
    -ability to download dependencies/sources (git or http)
@@ -41,6 +40,14 @@ static if(DEBUG_PRINTING)
 else
 {
    alias WriteMsg = DontWriteMsg;
+   void DontWriteMsg(T...)(T args) {}
+}
+
+void ExitError(string msg)
+{
+   writeln("ERROR! stopping!");
+   writeln(msg);
+   exit(-1);
 }
 
 enum VersionType : string
@@ -51,7 +58,7 @@ enum VersionType : string
    Patch = "Patch"
 }
 
-struct VersionInformation
+struct VersionInfo
 {
    int major;
    int minor;
@@ -64,7 +71,7 @@ struct VersionInformation
    bool is_versioned;
 }
 
-struct PlatformInformation
+struct PlatformInfo
 {
    bool optimized;
    string arch;
@@ -85,9 +92,16 @@ struct FileDescription
    FileType type;
 }
 
-struct BuildInformation
+struct RoutineState
 {
-   PlatformInformation platform;
+   BuildInfo build_info;
+   VersionInfo version_info;
+   RoutineInfo routine_info;
+}
+
+struct BuildInfo
+{
+   PlatformInfo platform;
    bool can_build;
    string type;
    string language;
@@ -97,7 +111,7 @@ struct BuildInformation
    bool silent_build;
 }
 
-struct BuildRoutine
+struct RoutineInfo
 {  
    string directory;
    string path;
@@ -252,6 +266,153 @@ string GetDefaultRoutine(string file_path)
    return null;
 }
 
+BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
+{
+   BuildInfo *build_info = &state.build_info;
+   
+   build_info.language = "";
+   build_info.type = "";
+   build_info.can_build = true;
+   build_info.build_folder = "";
+   build_info.project_name = "";
+   build_info.platform = GetHost(state.routine_info.platform_config_path);
+   build_info.platform.optimized = true;
+   build_info.silent_build = silent_build;
+   
+   JSONString project;
+   if(GetJSONString(state, "project", &project))
+   {
+      build_info.project_name = project.get();
+   }
+   else
+   {
+      build_info.can_build = false;
+   }
+   
+   JSONString language;
+   if(GetJSONString(state, "language", &language))
+   {
+      build_info.language = language.get();
+   }
+   else
+   {
+      build_info.can_build = false;
+   }
+   
+   JSONString type;
+   if(GetJSONString(state, "type", &type))
+   {
+      build_info.type = type.get();
+   }
+   else
+   {
+      build_info.can_build = false;
+   }
+   
+   JSONString build;
+   if(GetJSONString(state, "build", &build))
+   {
+      build_info.build_folder = build.get();
+   }
+   else
+   {
+      build_info.can_build = false;
+   }
+   
+   JSONBool optimized;
+   if(GetJSONBool(state, "optimized", &optimized))
+   {
+      build_info.platform.optimized = optimized.get();
+   }
+   
+   JSONStringArray attributes;
+   if(GetJSONStringArray(state, "attributes", &attributes))
+   {
+      foreach(string attrib_name; attributes.get())
+      {
+         JSONStringArray attribute;
+         if(GetJSONStringArray(state, attrib_name, &attribute))
+         {
+            build_info.attributes[attrib_name] = new string[attribute.get().length];
+            foreach(int i, string attrib_value; attribute.get())
+            {
+               build_info.attributes[attrib_name][i] = attrib_value;
+            }
+         }
+      }
+   }
+   
+   return *build_info;
+}
+
+VersionInfo GetVersionInfo(RoutineState state, VersionType version_type)
+{
+   VersionInfo *version_info = &state.version_info;
+   
+   version_info.type = version_type;
+   version_info.major = 0;
+   version_info.minor = 0;
+   version_info.patch = 0;
+   version_info.appended = "";
+   version_info.is_versioned = true;
+   
+   
+   {
+      //TODO: REFACTOR
+      JSONValue routine_json = GetRoutineJSON(state.routine_info);
+      
+      if(HasJSON(routine_json, "version"))
+      {
+         if(routine_json["version"].type() == JSON_TYPE.ARRAY)
+         {
+            JSONValue version_json = routine_json["version"];
+            
+            if(version_json.array.length >= 3)
+            {
+               if(version_json[0].type() == JSON_TYPE.INTEGER)
+               {
+                  state.version_info.major = to!int(version_json[0].integer);
+               }
+               
+               if(version_json[1].type() == JSON_TYPE.INTEGER)
+               {
+                  state.version_info.minor = to!int(version_json[1].integer);
+               }
+               
+               if(version_json[2].type() == JSON_TYPE.INTEGER)
+               {
+                  state.version_info.patch = to!int(version_json[2].integer);
+               }
+            }
+            else
+            {
+               state.version_info.is_versioned = false;
+            }
+            
+            if(version_json.array.length == 4)
+            {   
+               if(version_json[3].type() == JSON_TYPE.STRING)
+               {
+                  state.version_info.appended = version_json[3].str();
+               }
+            }
+         }
+      }
+      else
+      {
+         state.version_info.is_versioned = false;
+      }
+   }
+   
+   JSONString version_break;
+   if(GetJSONString(state, "version_break", &version_break))
+   {
+      version_info.breakS = version_break.get();
+   }
+   
+   return *version_info;
+}
+
 void RunRoutine(string file_path, string routine_name, string default_platform_config_path, VersionType version_type, bool silent_build)
 {
    WriteMsg("Executing routine ", routine_name, " in ", file_path);
@@ -271,182 +432,23 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
    
    if(routine_json.type() == JSON_TYPE.OBJECT)
    {
-      BuildRoutine routine_info = MakeRoutine(file_path, routine_name, default_platform_config_path);
+      RoutineState state;
    
-      if(HasJSON(routine_json, "platform config"))
-      {
-         JSONValue specified_platform_config_json = routine_json["platform config"];
-         
-         if(specified_platform_config_json.type() == JSON_TYPE.STRING)
-         {
-            routine_info = MakeRoutine(file_path, routine_name, specified_platform_config_json.str());
-         }
-      }
-   
-      BuildInformation build_info;
-      build_info.language = "";
-      build_info.type = "";
-      build_info.can_build = true;
-      build_info.build_folder = "";
-      build_info.project_name = "";
-      build_info.platform = GetHost(routine_info.platform_config_path);
-      build_info.platform.optimized = true;
-      build_info.silent_build = silent_build;
+      state.routine_info = MakeRoutine(file_path, routine_name, default_platform_config_path);
+      state.build_info = GetBuildInfo(state, silent_build);
+      state.version_info = GetVersionInfo(state, version_type);
       
-      VersionInformation version_info;
-      version_info.type = version_type;
-      version_info.major = 0;
-      version_info.minor = 0;
-      version_info.patch = 0;
-      version_info.appended = "";
-      version_info.is_versioned = true;
-      
-      if(HasJSON(routine_json, "project"))
-      {
-         if(routine_json["project"].type() == JSON_TYPE.STRING)
-         {
-            build_info.project_name = routine_json["project"].str();
-         }   
-      }      
-      else
-      {
-         build_info.can_build = false;
-      }
-      
-      if(HasJSON(routine_json, "language"))
-      {
-         if(routine_json["language"].type() == JSON_TYPE.STRING)
-         {
-            build_info.language = routine_json["language"].str();
-         } 
-      }      
-      else
-      {
-         build_info.can_build = false;
-      }
-      
-      if(HasJSON(routine_json, "type"))
-      {
-         if(routine_json["type"].type() == JSON_TYPE.STRING)
-         {
-            build_info.type = routine_json["type"].str();
-         }
-      }      
-      else
-      {
-         build_info.can_build = false;
-      }
-      
-      if(HasJSON(routine_json, "build"))
-      {
-         if(routine_json["build"].type() == JSON_TYPE.STRING)
-         {
-            build_info.build_folder = routine_json["build"].str();
-         }
-      }
-      else
-      {
-         build_info.can_build = false;
-      }
-      
-      if(HasJSON(routine_json, "version"))
-      {
-         if(routine_json["version"].type() == JSON_TYPE.ARRAY)
-         {
-            JSONValue version_json = routine_json["version"];
-            
-            if(version_json.array.length >= 3)
-            {
-               if(version_json[0].type() == JSON_TYPE.INTEGER)
-               {
-                  version_info.major = to!int(version_json[0].integer);
-               }
-               
-               if(version_json[1].type() == JSON_TYPE.INTEGER)
-               {
-                  version_info.minor = to!int(version_json[1].integer);
-               }
-               
-               if(version_json[2].type() == JSON_TYPE.INTEGER)
-               {
-                  version_info.patch = to!int(version_json[2].integer);
-               }
-            }
-            else
-            {
-               version_info.is_versioned = false;
-            }
-            
-            if(version_json.array.length == 4)
-            {   
-               if(version_json[3].type() == JSON_TYPE.STRING)
-               {
-                  version_info.appended = version_json[3].str();
-               }
-            }
-         }
-      }
-      else
-      {
-         version_info.is_versioned = false;
-      }
-      
-      if(HasJSON(routine_json, "version_break"))
-      {
-         JSONValue version_break_json = routine_json["version_break"];
-         
-         if(version_break_json.type() == JSON_TYPE.STRING)
-         {
-            version_info.breakS = version_break_json.str();
-         }
-      }
-      
-      if(HasJSON(routine_json, "optimized"))
-      {
-         if(routine_json["optimized"].type() == JSON_TYPE.TRUE)
-         {
-            build_info.platform.optimized = true;
-         }
-         else if(routine_json["optimized"].type() == JSON_TYPE.FALSE)
-         {
-            build_info.platform.optimized = false;
-         }
-      }
-      
-      if(HasJSON(routine_json, "attributes"))
-      {
-         if(routine_json["attributes"].type() == JSON_TYPE.ARRAY)
-         {
-            JSONValue attributes_json = routine_json["attributes"];
-            
-            foreach(JSONValue attribute_name_json; attributes_json.array)
-            {
-               if(attribute_name_json.type() == JSON_TYPE.STRING)
-               {
-                  string attribute_name = attribute_name_json.str();
-                  JSONValue attribute_json = routine_json[attribute_name];
-                  
-                  build_info.attributes[attribute_name] = new string[JSONArraySize(attribute_json)];
-                  JSONMapString(attribute_json, (string attrib_str, int i)
-                  {
-                     build_info.attributes[attribute_name][i] = attrib_str;
-                  });
-               }
-            }
-         }
-      }
-      
-      ExecuteOperations(routine_info, build_info, version_info);
+      ExecuteOperations(state);
    }
 }
 
-void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
+void ExecuteOperations(RoutineState state)
 {
-   JSONValue routine_json = GetRoutineJSON(routine);
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
 
    if(!HasJSON(routine_json, "operations"))
    {
-      BuildOperation(routine, build_info, version_info);
+      BuildOperation(state);
       return;
    }
    
@@ -456,7 +458,7 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
    {
       string last_operation_token = "";
       bool has_built = false;
-      CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json);
+      CommandInformation[] commands = LoadCommandsFromTag(state.routine_info, state.build_info, state.version_info, operations_json);
       
       WriteMsg("Executing Commands:");
       
@@ -477,32 +479,32 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
          switch(operation_token)
          {
             case "move":
-               MoveOperation(routine, operation_params);
+               MoveOperation(state.routine_info, operation_params);
                break;
             
             case "delete":
-               DeleteOperation(routine, operation_params);
+               DeleteOperation(state.routine_info, operation_params);
                break;
             
             case "copy":
-               CopyOperation(routine, operation_params);
+               CopyOperation(state.routine_info, operation_params);
                break;
             
             case "call":
-               CallOperation(routine, build_info, operation_params);
+               CallOperation(state.routine_info, state.build_info, operation_params);
                break;
             
             case "cmd":
-               CommandOperation(routine, operation_params);
+               CommandOperation(state.routine_info, operation_params);
                break;
             
             case "replace":
-               ReplaceOperation(routine, operation_params);
+               ReplaceOperation(state.routine_info, operation_params);
                break;
             
             case "build":
             {
-               BuildOperation(routine, build_info, version_info);
+               BuildOperation(state);
                has_built = true;
             }
             break;
@@ -524,18 +526,18 @@ void ExecuteOperations(BuildRoutine routine, BuildInformation build_info, Versio
       }
       
       if(!has_built)
-         BuildOperation(routine, build_info, version_info);
+         BuildOperation(state);
    }
 }
 
-void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildInformation build_info, VersionInformation version_info)
+void ExecutePerOperations(string output_directory, RoutineState state)
 {
-   JSONValue routine_json = GetRoutineJSON(routine);
-   string version_string = GetVersionString(version_info);
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   string version_string = GetVersionString(state.version_info);
    
    if(!HasJSON(routine_json, "per-operations"))
    {
-      Build(output_directory, routine, build_info, version_info);
+      Build(output_directory, state);
       return;
    }
    
@@ -550,7 +552,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
       replace_additions["[OUTPUT_DIRECTORY]"] = output_directory;
       WriteMsg(replace_additions["[OUTPUT_DIRECTORY]"]);
       
-      CommandInformation[] commands = LoadCommandsFromTag(routine, build_info, version_info, operations_json, replace_additions);
+      CommandInformation[] commands = LoadCommandsFromTag(state.routine_info, state.build_info, state.version_info, operations_json, replace_additions);
       
       foreach(CommandInformation command; commands)
       {
@@ -563,7 +565,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
       if(!specifies_build)
       {
          has_built = true;
-         Build(output_directory, routine, build_info, version_info);
+         Build(output_directory, state);
       }
    
       string last_operation_token = "";
@@ -587,27 +589,27 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
          switch(operation_token)
          {
             case "move":
-               MoveOperation(routine, operation_params);
+               MoveOperation(state.routine_info, operation_params);
                break;
             
             case "delete":
-               DeleteOperation(routine, operation_params);
+               DeleteOperation(state.routine_info, operation_params);
                break;
             
             case "copy":
-               CopyOperation(routine, operation_params);
+               CopyOperation(state.routine_info, operation_params);
                break;
             
             case "call":
-               CallOperation(routine, build_info, operation_params);
+               CallOperation(state.routine_info, state.build_info, operation_params);
                break;
             
             case "cmd":
-               CommandOperation(routine, operation_params);
+               CommandOperation(state.routine_info, operation_params);
                break;
             
             case "replace":
-               ReplaceOperation(routine, operation_params);
+               ReplaceOperation(state.routine_info, operation_params);
                break;
             
             case "build":
@@ -616,7 +618,7 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
                {
                   has_built = true;
                   WriteMsg("\tBuilding...");
-                  Build(output_directory, routine, build_info, version_info);
+                  Build(output_directory, state);
                }
                else
                {
@@ -643,42 +645,44 @@ void ExecutePerOperations(string output_directory, BuildRoutine routine, BuildIn
    }
 }
 
-void BuildOperation(BuildRoutine routine, BuildInformation build_info, VersionInformation in_version_info)
+void BuildOperation(RoutineState state)
 {
-   if(build_info.can_build)
+   if(state.build_info.can_build)
    {
-      VersionInformation version_info = in_version_info;
+      VersionInfo version_info = state.version_info;
    
       if(version_info.is_versioned)
       {
-         version_info = UpdateVersions(routine, version_info); 
+         version_info = UpdateVersions(state.routine_info, state.version_info); 
       }
       
-      JSONValue routine_json = GetRoutineJSON(routine);
-      string[int][string] platforms = GetAvailablePlatforms(routine.platform_config_path);
+      JSONValue routine_json = GetRoutineJSON(state.routine_info);
+      string[int][string] platforms = GetAvailablePlatforms(state.routine_info.platform_config_path);
       
       foreach(string OS, string[int] archs; platforms)
       {
          foreach(string arch; archs)
          {
-            build_info.platform.arch = arch;
-            build_info.platform.OS = OS;
+            RoutineState per_platform_state = state;
             
-            string output_directory_noslash = build_info.build_folder.endsWith("/") ? build_info.build_folder[0 .. build_info.build_folder.lastIndexOf("/")] : build_info.build_folder;
-            string output_folder = output_directory_noslash ~ "/" ~ build_info.platform.OS ~ "_" ~ build_info.platform.arch;
+            per_platform_state.build_info.platform.arch = arch;
+            per_platform_state.build_info.platform.OS = OS;
             
-            if(exists(PathF(output_folder, routine)))
+            string output_directory_noslash = per_platform_state.build_info.build_folder.endsWith("/") ? per_platform_state.build_info.build_folder[0 .. per_platform_state.build_info.build_folder.lastIndexOf("/")] : per_platform_state.build_info.build_folder;
+            string output_folder = output_directory_noslash ~ "/" ~ per_platform_state.build_info.platform.OS ~ "_" ~ per_platform_state.build_info.platform.arch;
+            
+            if(exists(PathF(output_folder, per_platform_state.routine_info)))
             {
-               rmdirRecurse(PathF(output_folder, routine));
+               rmdirRecurse(PathF(output_folder, per_platform_state.routine_info));
             }
             
-            ExecutePerOperations(output_folder, routine, build_info, version_info);
+            ExecutePerOperations(output_folder, per_platform_state);
          }
       }
    }
 }
 
-void CopyOperation(BuildRoutine routine_info, string[] params)
+void CopyOperation(RoutineInfo routine_info, string[] params)
 {
    if(params.length == 2)
    {
@@ -692,7 +696,7 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    }
    else if(params.length == 4)
    {
-      if(IsValidInt(params[3]))
+      if(IsValid!int(params[3]))
       {
          WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
          CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
@@ -707,7 +711,7 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    {
       WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
       
-      if(IsValidInt(params[4]))
+      if(IsValid!int(params[4]))
       {
          CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
       }
@@ -719,7 +723,7 @@ void CopyOperation(BuildRoutine routine_info, string[] params)
    }
 }
 
-void DeleteOperation(BuildRoutine routine_info, string[] params)
+void DeleteOperation(RoutineInfo routine_info, string[] params)
 {  
    if(params.length == 1)
    {
@@ -733,7 +737,7 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
    }
    else if(params.length == 3)
    {
-      if(IsValidInt(params[2]))
+      if(IsValid!int(params[2]))
       {
          WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
          DeleteMatchingItems(PathF(params[0], routine_info), "", params[1], to!int(params[2]));
@@ -746,7 +750,7 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
    }
    else if(params.length == 4)
    {
-      if(IsValidInt(params[3]))
+      if(IsValid!int(params[3]))
       {
          WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
          DeleteMatchingItems(PathF(params[0], routine_info), params[1], params[2], to!int(params[3]));
@@ -759,7 +763,7 @@ void DeleteOperation(BuildRoutine routine_info, string[] params)
    }
 }
 
-void MoveOperation(BuildRoutine routine_info, string[] params)
+void MoveOperation(RoutineInfo routine_info, string[] params)
 {
    if(params.length == 2)
    {
@@ -775,7 +779,7 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    }
    else if(params.length == 4)
    {
-      if(IsValidInt(params[3]))
+      if(IsValid!int(params[3]))
       {
          WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
          CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
@@ -792,7 +796,7 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    {
       WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
    
-      if(IsValidInt(params[4]))
+      if(IsValid!int(params[4]))
       {
          CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
          DeleteMatchingItems(PathF(params[0], routine_info), params[2], params[3], to!int(params[4]));
@@ -806,7 +810,7 @@ void MoveOperation(BuildRoutine routine_info, string[] params)
    }
 }
 
-void CallOperation(BuildRoutine routine_info, BuildInformation build_info, string[] params)
+void CallOperation(RoutineInfo routine_info, BuildInfo build_info, string[] params)
 {
    WriteMsg("Executing calls:");
    
@@ -827,7 +831,7 @@ void CallOperation(BuildRoutine routine_info, BuildInformation build_info, strin
    }
 }
 
-void CommandOperation(BuildRoutine routine_info, string[] params)
+void CommandOperation(RoutineInfo routine_info, string[] params)
 {
    foreach(string command; params)
    {
@@ -835,7 +839,7 @@ void CommandOperation(BuildRoutine routine_info, string[] params)
    }
 }
 
-void ReplaceOperation(BuildRoutine routine_info, string[] params)
+void ReplaceOperation(RoutineInfo routine_info, string[] params)
 {
    if(params.length > 2)
    {
@@ -849,7 +853,7 @@ void ReplaceOperation(BuildRoutine routine_info, string[] params)
    }
 }
 
-string GetVersionString(VersionInformation version_info)
+string GetVersionString(VersionInfo version_info)
 {
    string version_string = to!string(version_info.major) ~ version_info.breakS
                            ~ to!string(version_info.minor) ~ version_info.breakS
@@ -859,7 +863,7 @@ string GetVersionString(VersionInformation version_info)
    return version_string;
 }
 
-VersionInformation UpdateVersions(BuildRoutine routine, VersionInformation version_info)
+VersionInfo UpdateVersions(RoutineInfo routine, VersionInfo version_info)
 {
    JSONValue file_json = parseJSON(readText(routine.path));
    bool update_versions = true;
@@ -932,7 +936,7 @@ VersionInformation UpdateVersions(BuildRoutine routine, VersionInformation versi
    return version_info;
 }
 
-JSONValue GetRoutineJSON(BuildRoutine routine)
+JSONValue GetRoutineJSON(RoutineInfo routine)
 {
    JSONValue file_json = parseJSON(readText(routine.path));
    
@@ -978,7 +982,7 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
    return JSONValue.init; 
 }
 
-PlatformInformation GetHost(string file_path)
+PlatformInfo GetHost(string file_path)
 {
    WriteMsg("Get Host");
    
@@ -995,7 +999,7 @@ PlatformInformation GetHost(string file_path)
             if((host_json.array[0].type() == JSON_TYPE.STRING) &&
                (host_json.array[1].type() == JSON_TYPE.STRING))
             {
-               PlatformInformation info;
+               PlatformInfo info;
                info.OS = host_json[0].str();
                info.arch = host_json[1].str();
                return info;
@@ -1007,7 +1011,7 @@ PlatformInformation GetHost(string file_path)
    writeln("Platform config missing host");
    exit(-1);
 
-   return PlatformInformation.init;
+   return PlatformInfo.init;
 }
 
 JSONValue GetLanguageCommandTag(string file_path, string language_name, string build_type)
@@ -1200,9 +1204,9 @@ string[int][string] GetAvailablePlatforms(string file_path)
 const string extern_decl_begin = "[EXTERN ";
 const string extern_decl_end = "]";
 
-ExternalVariable[] GetExternalVariables(BuildRoutine routine_info, 
-                                        BuildInformation build_info,
-                                        VersionInformation version_info,
+ExternalVariable[] GetExternalVariables(RoutineInfo routine_info, 
+                                        BuildInfo build_info,
+                                        VersionInfo version_info,
                                         string tag_str)
 {
    int extern_var_count = min(tag_str.count(extern_decl_begin),
@@ -1239,7 +1243,7 @@ ExternalVariable[] GetExternalVariables(BuildRoutine routine_info,
          assert(false);
       }
       
-      BuildRoutine extern_routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
+      RoutineInfo extern_routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
       JSONValue extern_json = GetRoutineJSON(extern_routine);
       
       ExternalVariable extern_var;
@@ -1275,14 +1279,37 @@ ExternalVariable[] GetExternalVariables(BuildRoutine routine_info,
    return extern_vars;
 }
 
-BuildRoutine MakeRoutine(string file_path, string routine_name, string platform_config_path)
+RoutineInfo MakeRoutine(string file_path,
+                         string routine_name,
+                         string default_platform_config_path,
+                         bool can_specify_platform_config = true)
 {
-   BuildRoutine routine_info;
+   RoutineInfo routine_info;
    
    routine_info.path = file_path;
    routine_info.name = routine_name;
    routine_info.directory = file_path[0 .. file_path.lastIndexOf("/") + 1];
-   routine_info.platform_config_path = platform_config_path;
+   routine_info.platform_config_path = default_platform_config_path;
+   
+   if(can_specify_platform_config)
+   {
+      JSONValue file_json = parseJSON(readText(file_path));
+      
+      if(HasJSON(file_json, routine_name))
+      {
+         JSONValue routine_json = file_json[routine_name];
+         
+         if(HasJSON(routine_json, "platform config"))
+         {
+            JSONValue specified_platform_config_json = routine_json["platform config"];
+            
+            if(specified_platform_config_json.type() == JSON_TYPE.STRING)
+            {
+               routine_info.platform_config_path = PathF(specified_platform_config_json.str(), routine_info);
+            }
+         }
+      }
+   }
    
    return routine_info;
 }
@@ -1303,7 +1330,12 @@ bool HasJSON(JSONValue json, string ID)
    }
 }
 
-string PathF(string str, BuildRoutine routine)
+bool IsJSONBool(JSONValue json)
+{
+   return (json.type() == JSON_TYPE.TRUE) || (json.type() == JSON_TYPE.FALSE);
+}
+
+string PathF(string str, RoutineInfo routine)
 {
    string new_str = str;
    
@@ -1359,9 +1391,9 @@ int JSONArraySize(JSONValue json)
    return 0;
 }
 
-string GetAttribString(BuildRoutine routine_info, 
-                       BuildInformation build_info,
-                       VersionInformation version_info,
+string GetAttribString(RoutineInfo routine_info, 
+                       BuildInfo build_info,
+                       VersionInfo version_info,
                        string attrib_name)
 {
    WriteMsg("Loading ", attrib_name, " from ", routine_info.path);
@@ -1387,9 +1419,9 @@ string GetAttribString(BuildRoutine routine_info,
    return "";
 }
 
-bool HandleConditional(BuildRoutine routine_info, 
-                       BuildInformation build_info,
-                       VersionInformation version_info,
+bool HandleConditional(RoutineInfo routine_info, 
+                       BuildInfo build_info,
+                       VersionInfo version_info,
                        string condit_str)
 {
    string conditional = condit_str[0 .. condit_str.indexOf("=") + 1];
@@ -1423,9 +1455,9 @@ bool HandleConditional(BuildRoutine routine_info,
    return false;
 }
 
-string ProcessTag(BuildRoutine routine_info, 
-                  BuildInformation build_info,
-                  VersionInformation version_info,
+string ProcessTag(RoutineInfo routine_info, 
+                  BuildInfo build_info,
+                  VersionInfo version_info,
                   string str,
                   string[string] replace_additions,
                   string str_attrib_group)
@@ -1473,9 +1505,9 @@ string ProcessTag(BuildRoutine routine_info,
    return new_str;
 }
 
-string LoadStringFromTag(BuildRoutine routine_info, 
-                         BuildInformation build_info,
-                         VersionInformation version_info,
+string LoadStringFromTag(RoutineInfo routine_info, 
+                         BuildInfo build_info,
+                         VersionInfo version_info,
                          JSONValue json,
                          string[string] replace_additions = null,
                          string str_attrib_group = "")
@@ -1518,16 +1550,60 @@ string LoadStringFromTag(BuildRoutine routine_info,
       return json.str();
    }
    
-   writeln("ERROR! stopping!");
-   writeln("Could load string from tag");
-   exit(-1);
-   
+   ExitError("Couldn't load string from tag!");
    return null;
 }
 
-void LoadStringArrayFromTag_internal(BuildRoutine routine_info, 
-                                     BuildInformation build_info,
-                                     VersionInformation version_info,
+bool LoadBoolFromTag(RoutineInfo routine_info, 
+                     BuildInfo build_info,
+                     VersionInfo version_info,
+                     JSONValue json)
+{
+   if(json.type() == JSON_TYPE.OBJECT)
+   {
+      if(HasJSON(json, "if") && HasJSON(json, "then"))
+      {
+         JSONValue if_json = json["if"];
+         JSONValue then_json = json["then"];
+         
+         if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)) &&
+            IsJSONBool(then_json))
+         {
+            bool state = true;
+            
+            JSONMapString(if_json, (string condit_str, int i)
+            {
+               state = state && HandleConditional(routine_info, build_info, version_info, condit_str);
+            });
+            
+            if(state)
+            {
+               return (then_json.type() == JSON_TYPE.TRUE);
+            }
+            else if(HasJSON(json, "else"))
+            {
+               JSONValue else_json = json["else"];
+               
+               if(IsJSONBool(else_json))
+               {
+                  return (else_json.type() == JSON_TYPE.TRUE); 
+               }
+            }
+         }
+      }
+   }
+   else if(IsJSONBool(json))
+   {
+      return (json.type() == JSON_TYPE.TRUE);
+   }
+   
+   ExitError("Couldn't load bool from tag!");
+   return false;
+}
+
+void LoadStringArrayFromTag_internal(RoutineInfo routine_info, 
+                                     BuildInfo build_info,
+                                     VersionInfo version_info,
                                      JSONValue json,
                                      Array!string *sarray,
                                      string[string] replace_additions = null,
@@ -1568,9 +1644,9 @@ void LoadStringArrayFromTag_internal(BuildRoutine routine_info,
    }
 }
 
-string[] LoadStringArrayFromTag(BuildRoutine routine_info, 
-                                BuildInformation build_info,
-                                VersionInformation version_info,
+string[] LoadStringArrayFromTag(RoutineInfo routine_info, 
+                                BuildInfo build_info,
+                                VersionInfo version_info,
                                 JSONValue json,
                                 string[string] replace_additions = null,
                                 string str_attrib_group = "")
@@ -1615,9 +1691,9 @@ string[] LoadStringArrayFromTag(BuildRoutine routine_info,
    return null;
 }
 
-CommandInformation[] LoadCommandsFromTag(BuildRoutine routine_info, 
-                                         BuildInformation build_info,
-                                         VersionInformation version_info,
+CommandInformation[] LoadCommandsFromTag(RoutineInfo routine_info, 
+                                         BuildInfo build_info,
+                                         VersionInfo version_info,
                                          JSONValue json,
                                          string[string] replace_additions = null,
                                          string str_attrib_group = "")
@@ -1665,9 +1741,9 @@ CommandInformation[] LoadCommandsFromTag(BuildRoutine routine_info,
    return null;
 }
 
-FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info, 
-                                              BuildInformation build_info,
-                                              VersionInformation version_info,
+FileDescription[] LoadFileDescriptionsFromTag(RoutineInfo routine_info, 
+                                              BuildInfo build_info,
+                                              VersionInfo version_info,
                                               JSONValue json)
 {
    Array!FileDescription file_list = Array!FileDescription();
@@ -1694,7 +1770,7 @@ FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info,
             
             if(strings.length == 2)
             {
-               if(IsValidFileType(strings[0]))
+               if(IsValid!FileType(strings[0]))
                {
                   fdesc.path = strings[1];
                   fdesc.type = to!FileType(strings[0]);
@@ -1736,6 +1812,95 @@ FileDescription[] LoadFileDescriptionsFromTag(BuildRoutine routine_info,
    }
    
    return null;
+}
+
+struct JSONString
+{
+   string _val;
+   
+   string get()
+   {
+      return _val;
+   }
+   
+   string getPath(RoutineInfo routine)
+   {
+      return PathF(_val, routine);
+   }
+}
+
+bool GetJSONString(RoutineState state, string var_name, JSONString *result)
+{
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   
+   if(HasJSON(routine_json, var_name))
+   {
+      JSONValue var_json = routine_json[var_name];
+      
+      result._val = LoadStringFromTag(state.routine_info,
+                                      state.build_info,
+                                      state.version_info,
+                                      var_json);
+      return true;
+   }
+   
+   return false;
+}
+
+struct JSONBool
+{
+   bool _val;
+   
+   bool get()
+   {
+      return _val;
+   }
+}
+
+bool GetJSONBool(RoutineState state, string var_name, JSONBool *result)
+{
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   
+   if(HasJSON(routine_json, var_name))
+   {
+      JSONValue var_json = routine_json[var_name];
+      
+      result._val = LoadBoolFromTag(state.routine_info,
+                                    state.build_info,
+                                    state.version_info,
+                                    var_json);
+      return true;
+   }
+   
+   return false;
+}
+
+struct JSONStringArray
+{
+   string[] _val;
+   
+   string[] get()
+   {
+      return _val;
+   }
+}
+
+bool GetJSONStringArray(RoutineState state, string var_name, JSONStringArray *result)
+{
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   
+   if(HasJSON(routine_json, var_name))
+   {
+      JSONValue var_json = routine_json[var_name];
+      
+      result._val = LoadStringArrayFromTag(state.routine_info,
+                                           state.build_info,
+                                           state.version_info,
+                                           var_json);
+      return true;
+   }
+   
+   return false;
 }
 
 void CopyItem(string source, string destination)
@@ -1828,86 +1993,59 @@ void DeleteMatchingItems(string path, string begining = "", string ending = "", 
    } catch {}
 }
 
-void DontWriteMsg(T...)(T args)
-{
-   static if(DEBUG_PRINTING)
-   {
-      writeln(T);
-   }
-}
-
 void DownloadFile(string source, string dest)
 {
    string curl_download_command = ("curl \"" ~ source ~ "\" -o \"" ~ dest ~ "\" 1> nul 2> nul");
-   writeln(curl_download_command);
+   //writeln(curl_download_command);
    //TODO: re-enable this once ready!
    //system(toStringz(curl_download_command));
 }
 
-bool IsValidInt(string str)
+bool IsValid(T)(string str)
 {
    try
    {
-      int i = to!int(str);
-      
+      T var = to!T(str);
       return true;
-   }
-   catch(ConvException e)
-   {
-      return false;
-   }
+   } catch(ConvException e) { return false; }
 }
 
-bool IsValidFileType(string str)
+void Build(string output_folder, RoutineState state)
 {
-   try
-   {
-      FileType t = to!FileType(str);
-      
-      return true;
-   }
-   catch(ConvException e)
-   {
-      return false;
-   }
-}
-
-void Build(string output_folder, BuildRoutine routine_info, BuildInformation build_info, VersionInformation version_info)
-{
-   string temp_dir = routine_info.directory ~ build_info.project_name ~ "_" ~ routine_info.name ~ "_" ~ randomUUID().toString();
-   string file_ending = GetLanguageFileEnding(routine_info.platform_config_path, build_info.language, build_info.type);
-   string version_string = GetVersionString(version_info);
+   string temp_dir = state.routine_info.directory ~ state.build_info.project_name ~ "_" ~ state.routine_info.name ~ "_" ~ randomUUID().toString();
+   string file_ending = GetLanguageFileEnding(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type);
+   string version_string = GetVersionString(state.version_info);
                            
-   string output_file_name = build_info.project_name ~ 
-                             (version_info.is_versioned ? (version_info.breakS ~ version_string) : "");
+   string output_file_name = state.build_info.project_name ~ 
+                             (state.version_info.is_versioned ? (state.version_info.breakS ~ version_string) : "");
    
    mkdirRecurse(temp_dir);
    
-   if(!exists(PathF(output_folder, routine_info)))
+   if(!exists(PathF(output_folder, state.routine_info)))
    {
-      mkdirRecurse(PathF(output_folder, routine_info));
+      mkdirRecurse(PathF(output_folder, state.routine_info));
    }
    
-   JSONValue routine_json = GetRoutineJSON(routine_info);
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
    string dependencies = "";
    
    if(HasJSON(routine_json, "source"))
    {
-      FileDescription[] source_folders = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["source"]);
+      FileDescription[] source_folders = LoadFileDescriptionsFromTag(state.routine_info, state.build_info, state.version_info, routine_json["source"]);
       
       foreach(FileDescription source; source_folders)
       {
-         WriteMsg("Src " ~ PathF(source.path, routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
+         WriteMsg("Src " ~ PathF(source.path, state.routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
          
          if(source.type == FileType.Local)
          {
             if((source.begining != "") || (source.ending != ""))
             {
-               CopyMatchingItems(PathF(source.path, routine_info), temp_dir ~ "/", source.begining, source.ending);
+               CopyMatchingItems(PathF(source.path, state.routine_info), temp_dir ~ "/", source.begining, source.ending);
             }
             else
             {
-               CopyItem(PathF(source.path, routine_info), temp_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $]);
+               CopyItem(PathF(source.path, state.routine_info), temp_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $]);
             }
          }
          else if(source.type == FileType.Remote)
@@ -1920,23 +2058,23 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    
    if(HasJSON(routine_json, "dependencies"))
    {
-      FileDescription[] dependency_items = LoadFileDescriptionsFromTag(routine_info, build_info, version_info, routine_json["dependencies"]);
+      FileDescription[] dependency_items = LoadFileDescriptionsFromTag(state.routine_info, state.build_info, state.version_info, routine_json["dependencies"]);
       
       foreach(FileDescription dep; dependency_items)
       {
          if(dep.type == FileType.Local)
          {
-            if(exists(PathF(dep.path, routine_info)))
+            if(exists(PathF(dep.path, state.routine_info)))
             {
-               WriteMsg("FDep " ~ PathF(dep.path, routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
+               WriteMsg("FDep " ~ PathF(dep.path, state.routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
                
                if((dep.begining != "") || (dep.ending != ""))
                {
-                  CopyMatchingItems(PathF(dep.path, routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+                  CopyMatchingItems(PathF(dep.path, state.routine_info), temp_dir ~ "/", dep.begining, dep.ending);
                }
                else
                {
-                  CopyItem(PathF(dep.path, routine_info), temp_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $]);
+                  CopyItem(PathF(dep.path, state.routine_info), temp_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $]);
                }
             }
             else
@@ -1955,14 +2093,14 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
       }
    }
    
-   writeln("Building " ~ build_info.project_name ~ " for " ~ build_info.platform.arch ~ (build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
+   writeln("Building " ~ state.build_info.project_name ~ " for " ~ state.build_info.platform.arch ~ (state.build_info.platform.optimized ? "(OPT)" : "(NOPT)"));
    
    string command_batch = "";
    
-   string[] command_templates = LoadStringArrayFromTag(routine_info,
-                                                       build_info,
-                                                       version_info,
-                                                       GetLanguageCommandTag(routine_info.platform_config_path, build_info.language, build_info.type));
+   string[] command_templates = LoadStringArrayFromTag(state.routine_info,
+                                                       state.build_info,
+                                                       state.version_info,
+                                                       GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type));
    
    foreach(string command_template; command_templates)
    {
@@ -1974,7 +2112,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    
    command_batch = "(" ~ command_batch[4 .. $] ~ ")";
    
-   if(build_info.silent_build)
+   if(state.build_info.silent_build)
    {
       version(Windows)
       {
@@ -1988,7 +2126,7 @@ void Build(string output_folder, BuildRoutine routine_info, BuildInformation bui
    
    system(toStringz(command_batch));
    
-   CopyItem(temp_dir ~ "/" ~ build_info.project_name ~ file_ending, PathF(output_folder, routine_info) ~ "/" ~ output_file_name ~ file_ending);
+   CopyItem(temp_dir ~ "/" ~ state.build_info.project_name ~ file_ending, PathF(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
    
    rmdirRecurse(temp_dir);
 }

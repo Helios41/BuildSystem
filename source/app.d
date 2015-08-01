@@ -14,16 +14,12 @@ import std.container;
 TO DO:   
    -either build for host, all available or specified platforms (default host only)
    -specify platforms & host in the platform config on a per language basis? (If not move types out of "types" obj)
-   -ability to download dependencies/sources (git or http)
    
    -Clean up code & comments
    -documentation
    -default platform configs
    
    -make the dll build script use /EXPORT instead of a .def & use delayed variable expansion
-   
-TO FIX:
-   -Why is that folder created in the temporary directory?
 
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
@@ -1995,10 +1991,18 @@ void DeleteMatchingItems(string path, string begining = "", string ending = "", 
 
 void DownloadFile(string source, string dest)
 {
-   string curl_download_command = ("curl \"" ~ source ~ "\" -o \"" ~ dest ~ "\" 1> nul 2> nul");
-   //writeln(curl_download_command);
-   //TODO: re-enable this once ready!
-   //system(toStringz(curl_download_command));
+   string curl_download_command = ("(curl \"" ~ source ~ "\" -o \"" ~ dest ~ "\")");
+   
+   version(Windows)
+   {
+      curl_download_command = curl_download_command ~ " 1> nul 2> nul";
+   }
+   else
+   {
+      curl_download_command = curl_download_command ~ " 2>&1 > /dev/null";
+   }
+   
+   system(toStringz(curl_download_command));
 }
 
 bool IsValid(T)(string str)

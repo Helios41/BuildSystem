@@ -7,8 +7,8 @@
       "build" : "../dltest",
       "source": 
       [
-         "../DLibrary.c",
-         ["../", ".h"]
+         "../test/DLibrary.c",
+         ["../test/", ".h"]
       ],
       "attributes": ["exports"],
       "exports": 

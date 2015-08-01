@@ -36,12 +36,12 @@
          "build"
       ],
       "type": "executable",
-      "build" : "../test/",
+      "build" : "../testbuild/",
       "source": 
       [
          ["Remote", "https://www.opengl.org/registry/api/GL/glext.h"],
-         "../helloworld.c",
-         ["../", ".h"]
+         "../test/helloworld.c",
+         ["../test/", ".h"]
       ],
       "dependencies": 
       [

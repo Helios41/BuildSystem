@@ -14,12 +14,13 @@ import std.container;
 TO DO:   
    -either build for host, all available or specified platforms (default host only)
    -specify platforms & host in the platform config on a per language basis? (If not move types out of "types" obj)
+   -make the dll build script use /EXPORT instead of a .def & use delayed variable expansion
+   
+   -replace 3 params with state
    
    -Clean up code & comments
    -documentation
    -default platform configs
-   
-   -make the dll build script use /EXPORT instead of a .def & use delayed variable expansion
 
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
@@ -352,52 +353,48 @@ VersionInfo GetVersionInfo(RoutineState state, VersionType version_type)
    version_info.appended = "";
    version_info.is_versioned = true;
    
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
    
+   if(HasJSON(routine_json, "version"))
    {
-      //TODO: REFACTOR
-      JSONValue routine_json = GetRoutineJSON(state.routine_info);
-      
-      if(HasJSON(routine_json, "version"))
+      if(routine_json["version"].type() == JSON_TYPE.ARRAY)
       {
-         if(routine_json["version"].type() == JSON_TYPE.ARRAY)
+         JSONValue version_json = routine_json["version"];
+         
+         if(version_json.array.length >= 3)
          {
-            JSONValue version_json = routine_json["version"];
-            
-            if(version_json.array.length >= 3)
+            if(version_json[0].type() == JSON_TYPE.INTEGER)
             {
-               if(version_json[0].type() == JSON_TYPE.INTEGER)
-               {
-                  state.version_info.major = to!int(version_json[0].integer);
-               }
-               
-               if(version_json[1].type() == JSON_TYPE.INTEGER)
-               {
-                  state.version_info.minor = to!int(version_json[1].integer);
-               }
-               
-               if(version_json[2].type() == JSON_TYPE.INTEGER)
-               {
-                  state.version_info.patch = to!int(version_json[2].integer);
-               }
-            }
-            else
-            {
-               state.version_info.is_versioned = false;
+               state.version_info.major = to!int(version_json[0].integer);
             }
             
-            if(version_json.array.length == 4)
-            {   
-               if(version_json[3].type() == JSON_TYPE.STRING)
-               {
-                  state.version_info.appended = version_json[3].str();
-               }
+            if(version_json[1].type() == JSON_TYPE.INTEGER)
+            {
+               state.version_info.minor = to!int(version_json[1].integer);
+            }
+            
+            if(version_json[2].type() == JSON_TYPE.INTEGER)
+            {
+               state.version_info.patch = to!int(version_json[2].integer);
+            }
+         }
+         else
+         {
+            state.version_info.is_versioned = false;
+         }
+         
+         if(version_json.array.length == 4)
+         {   
+            if(version_json[3].type() == JSON_TYPE.STRING)
+            {
+               state.version_info.appended = version_json[3].str();
             }
          }
       }
-      else
-      {
-         state.version_info.is_versioned = false;
-      }
+   }
+   else
+   {
+      state.version_info.is_versioned = false;
    }
    
    JSONString version_break;
@@ -1193,10 +1190,6 @@ string[int][string] GetAvailablePlatforms(string file_path)
    return platforms;
 }
 
-/*
-   [EXTERN _file_>_routine_opt_>_var_]
-*/
-
 const string extern_decl_begin = "[EXTERN ";
 const string extern_decl_end = "]";
 
@@ -1238,6 +1231,14 @@ ExternalVariable[] GetExternalVariables(RoutineInfo routine_info,
          writeln("Invalid external variable: ", extern_decl);
          assert(false);
       }
+      
+      //TODO: load full routine state from extern json file
+      /*
+         RoutineState extern_state;
+         extern_state.routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
+         extern_state.build_info = GetBuildInfo(state, build_info.silent_build);
+         extern_state.version_info = GetVersionInfo(state, VersionType.None);
+      */
       
       RoutineInfo extern_routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
       JSONValue extern_json = GetRoutineJSON(extern_routine);
@@ -1341,11 +1342,11 @@ string PathF(string str, RoutineInfo routine)
    return routine.directory ~ new_str;
 }
 
-bool JSONMapString(JSONValue json, int starting_index, void delegate(string str, int i) map_func)
+bool JSONMapString(JSONValue json, void delegate(string str, int i) map_func)
 {
    if(json.type() == JSON_TYPE.ARRAY)
    {
-      int i = starting_index;
+      int i = 0;
    
       foreach(JSONValue element_json; json.array)
       {
@@ -1358,7 +1359,7 @@ bool JSONMapString(JSONValue json, int starting_index, void delegate(string str,
    }
    else if(json.type() == JSON_TYPE.STRING)
    {
-      map_func(json.str(), starting_index);
+      map_func(json.str(), 0);
    }
    else
    {
@@ -1366,25 +1367,6 @@ bool JSONMapString(JSONValue json, int starting_index, void delegate(string str,
    }
    
    return true;
-}
-
-bool JSONMapString(JSONValue json, void delegate(string str, int i) map_func)
-{
-   return JSONMapString(json, 0, map_func);
-}
-
-int JSONArraySize(JSONValue json)
-{
-   if(json.type() == JSON_TYPE.STRING)
-   {
-      return 1;
-   }
-   else if(json.type() == JSON_TYPE.ARRAY)
-   {
-      return json.array.length;
-   }
-   
-   return 0;
 }
 
 string GetAttribString(RoutineInfo routine_info, 
@@ -1484,7 +1466,6 @@ string ProcessTag(RoutineInfo routine_info,
       }
    }
    
-   //TODO: fix this properly, this is temporary
    if(build_info.can_build)
    {
       foreach(string optional_attrib_name; GetLanguageOptionalAttribs(routine_info.platform_config_path, build_info.language, build_info.type))

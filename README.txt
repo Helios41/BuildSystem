@@ -3,8 +3,9 @@ Custom Build System:
    -easy (to a degree)
    -multi-platform & multi-architecture
 
-Feature complete build is available... sometimes...
 Still being actively developed, use at your own risk.
+Things will change and break!
+Complete build coming soon
 
 Documentation:
    Configuration files are in JSON format.
@@ -25,7 +26,7 @@ Documentation:
    path to a directory relative to the configuration file, this will be
    where the build file ends up.
    
-   [Work In Progress]
+   [Documentation Still Work In Progress]
    
    Command Line Options:
       "-major" -> this is a major build
@@ -45,8 +46,13 @@ Documentation:
       "language": "a programming language",
       "project": "project name",
       "type": "executable, static or dynamic",
-      "build": "./output_directory/",
-      
+      "build": "path/to/output/directory/",
+      "source": 
+      [
+         "path/to/source",
+         ["Remote", "http://www.some.url.file"],
+         "[EXTERN _file_>_routine_is_optional_>_var_]"
+      ]
    },
    "another function name":
    {

@@ -40,6 +40,7 @@
       "source": 
       [
          ["Remote", "https://www.opengl.org/registry/api/GL/glext.h"],
+         ["Remote", "https://raw.githubusercontent.com/Helios41/BuildSystem/master/test/remote_file.h"],
          "../test/helloworld.c",
          ["../test/", ".h"]
       ],

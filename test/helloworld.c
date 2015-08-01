@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <Windows.h>
-#include "remote_file.c"
+#include "remote_file.h"
 
 typedef int (*add_integers_foo_t)(int num1, int num2);
 void print_a_message(void);

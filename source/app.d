@@ -1989,19 +1989,22 @@ void DeleteMatchingItems(string path, string begining = "", string ending = "", 
    } catch {}
 }
 
-void DownloadFile(string source, string dest)
+string pipeToNUL(string str)
 {
-   string curl_download_command = ("(curl \"" ~ source ~ "\" -o \"" ~ dest ~ "\")");
-   
    version(Windows)
    {
-      curl_download_command = curl_download_command ~ " 1> nul 2> nul";
+      return "(" ~ str ~ ") 1> nul 2> nul";
    }
    else
    {
-      curl_download_command = curl_download_command ~ " 2>&1 > /dev/null";
+      return "(" ~ str ~ ") 2>&1 > /dev/null";
    }
-   
+}
+
+void DownloadFile(string source, string dest)
+{
+   string curl_download_command = ("(curl \"" ~ source ~ "\" -o \"" ~ dest ~ "\")");
+   curl_download_command = pipeToNUL(curl_download_command);
    system(toStringz(curl_download_command));
 }
 
@@ -2118,14 +2121,7 @@ void Build(string output_folder, RoutineState state)
    
    if(state.build_info.silent_build)
    {
-      version(Windows)
-      {
-         command_batch = command_batch ~ " 1> nul 2> nul";
-      }
-      else
-      {
-         command_batch = command_batch ~ " 2>&1 > /dev/null";
-      }
+      command_batch = pipeToNUL(command_batch);
    }
    
    system(toStringz(command_batch));

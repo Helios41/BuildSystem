@@ -16,8 +16,6 @@ TO DO:
    -specify platforms & host in the platform config on a per language basis? (If not move types out of "types" obj)
    -make the dll build script use /EXPORT instead of a .def & use delayed variable expansion
    
-   -replace 3 params with state
-   
    -Clean up code & comments
    -documentation
    -default platform configs
@@ -451,7 +449,7 @@ void ExecuteOperations(RoutineState state)
    {
       string last_operation_token = "";
       bool has_built = false;
-      CommandInformation[] commands = LoadCommandsFromTag(state.routine_info, state.build_info, state.version_info, operations_json);
+      CommandInformation[] commands = LoadCommandsFromTag(state, operations_json);
       
       WriteMsg("Executing Commands:");
       
@@ -545,7 +543,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
       replace_additions["[OUTPUT_DIRECTORY]"] = output_directory;
       WriteMsg(replace_additions["[OUTPUT_DIRECTORY]"]);
       
-      CommandInformation[] commands = LoadCommandsFromTag(state.routine_info, state.build_info, state.version_info, operations_json, replace_additions);
+      CommandInformation[] commands = LoadCommandsFromTag(state, operations_json, replace_additions);
       
       foreach(CommandInformation command; commands)
       {
@@ -1193,9 +1191,7 @@ string[int][string] GetAvailablePlatforms(string file_path)
 const string extern_decl_begin = "[EXTERN ";
 const string extern_decl_end = "]";
 
-ExternalVariable[] GetExternalVariables(RoutineInfo routine_info, 
-                                        BuildInfo build_info,
-                                        VersionInfo version_info,
+ExternalVariable[] GetExternalVariables(RoutineState state,
                                         string tag_str)
 {
    int extern_var_count = min(tag_str.count(extern_decl_begin),
@@ -1214,7 +1210,7 @@ ExternalVariable[] GetExternalVariables(RoutineInfo routine_info,
       string routine_name;
       string var_name;
       
-      file_path = PathF(file_path, routine_info);
+      file_path = PathF(file_path, state.routine_info);
       
       if(extern_decl.count(">") == 2)
       {
@@ -1232,16 +1228,12 @@ ExternalVariable[] GetExternalVariables(RoutineInfo routine_info,
          assert(false);
       }
       
-      //TODO: load full routine state from extern json file
-      /*
-         RoutineState extern_state;
-         extern_state.routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
-         extern_state.build_info = GetBuildInfo(state, build_info.silent_build);
-         extern_state.version_info = GetVersionInfo(state, VersionType.None);
-      */
+      RoutineState extern_state;
+      extern_state.routine_info = MakeRoutine(file_path, routine_name, state.routine_info.platform_config_path);
+      extern_state.build_info = GetBuildInfo(state, state.build_info.silent_build);
+      extern_state.version_info = GetVersionInfo(state, VersionType.None);
       
-      RoutineInfo extern_routine = MakeRoutine(file_path, routine_name, routine_info.platform_config_path);
-      JSONValue extern_json = GetRoutineJSON(extern_routine);
+      JSONValue extern_json = GetRoutineJSON(extern_state.routine_info);
       
       ExternalVariable extern_var;
       extern_var.declare = extern_decl;
@@ -1249,9 +1241,7 @@ ExternalVariable[] GetExternalVariables(RoutineInfo routine_info,
       
       if(HasJSON(extern_json, var_name))
       {
-         string[] extern_var_value_raw = LoadStringArrayFromTag(routine_info,
-                                                                build_info,
-                                                                version_info,
+         string[] extern_var_value_raw = LoadStringArrayFromTag(extern_state,
                                                                 extern_json[var_name]);
          
          if(extern_var_value_raw != null)
@@ -1369,21 +1359,19 @@ bool JSONMapString(JSONValue json, void delegate(string str, int i) map_func)
    return true;
 }
 
-string GetAttribString(RoutineInfo routine_info, 
-                       BuildInfo build_info,
-                       VersionInfo version_info,
+string GetAttribString(RoutineState state,
                        string attrib_name)
 {
-   WriteMsg("Loading ", attrib_name, " from ", routine_info.path);
+   WriteMsg("Loading ", attrib_name, " from ", state.routine_info.path);
    string attrib_value = "";
 
-   JSONValue routine_json = GetRoutineJSON(routine_info);
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
    
    if(HasJSON(routine_json, attrib_name))
    {
       JSONValue attrib_json = routine_json[attrib_name];
       
-      string[] attribs = LoadStringArrayFromTag(routine_info, build_info, version_info, attrib_json, null, attrib_name);
+      string[] attribs = LoadStringArrayFromTag(state, attrib_json, null, attrib_name);
       
       foreach(string str; attribs)
       {
@@ -1397,9 +1385,7 @@ string GetAttribString(RoutineInfo routine_info,
    return "";
 }
 
-bool HandleConditional(RoutineInfo routine_info, 
-                       BuildInfo build_info,
-                       VersionInfo version_info,
+bool HandleConditional(RoutineState state,
                        string condit_str)
 {
    string conditional = condit_str[0 .. condit_str.indexOf("=") + 1];
@@ -1409,22 +1395,22 @@ bool HandleConditional(RoutineInfo routine_info,
    {
       case "OS=":
       {
-         return (value == build_info.platform.OS);
+         return (value == state.build_info.platform.OS);
       }
       
       case "ARCH=":
       {
-         return (value == build_info.platform.arch);
+         return (value == state.build_info.platform.arch);
       }
       
       case "OPT=":
       {
-         return (value == to!string(build_info.platform.optimized));
+         return (value == to!string(state.build_info.platform.optimized));
       }
       
       case "SILENT=":
       {
-         return (value == to!string(build_info.silent_build));
+         return (value == to!string(state.build_info.silent_build));
       }
       
       default:
@@ -1433,21 +1419,19 @@ bool HandleConditional(RoutineInfo routine_info,
    return false;
 }
 
-string ProcessTag(RoutineInfo routine_info, 
-                  BuildInfo build_info,
-                  VersionInfo version_info,
+string ProcessTag(RoutineState state,
                   string str,
                   string[string] replace_additions,
                   string str_attrib_group)
 { 
-   string new_str = str.replace("[ARCH_NAME]", build_info.platform.arch)
-                       .replace("[OS_NAME]", build_info.platform.OS)
-                       .replace("[PROJECT_NAME]", build_info.project_name)
-                       .replace("[MAJOR_VERSION]", to!string(version_info.major))
-                       .replace("[MINOR_VERSION]", to!string(version_info.minor))
-                       .replace("[PATCH_VERSION]", to!string(version_info.patch))
-                       .replace("[VERSION_TYPE]", version_info.appended)
-                       .replace("[VERSION]", GetVersionString(version_info));
+   string new_str = str.replace("[ARCH_NAME]", state.build_info.platform.arch)
+                       .replace("[OS_NAME]", state.build_info.platform.OS)
+                       .replace("[PROJECT_NAME]", state.build_info.project_name)
+                       .replace("[MAJOR_VERSION]", to!string(state.version_info.major))
+                       .replace("[MINOR_VERSION]", to!string(state.version_info.minor))
+                       .replace("[PATCH_VERSION]", to!string(state.version_info.patch))
+                       .replace("[VERSION_TYPE]", state.version_info.appended)
+                       .replace("[VERSION]", GetVersionString(state.version_info));
                        
    if(replace_additions != null)
    {
@@ -1457,24 +1441,24 @@ string ProcessTag(RoutineInfo routine_info,
       }
    }
    
-   foreach(string attrib_name, string[] attrib_array; build_info.attributes)
+   foreach(string attrib_name, string[] attrib_array; state.build_info.attributes)
    {
       if(attrib_name != str_attrib_group)
       {
          new_str = new_str.replace("[ATTRIB: " ~ attrib_name ~ "]",
-                                   GetAttribString(routine_info, build_info, version_info, attrib_name));
+                                   GetAttribString(state, attrib_name));
       }
    }
    
-   if(build_info.can_build)
+   if(state.build_info.can_build)
    {
-      foreach(string optional_attrib_name; GetLanguageOptionalAttribs(routine_info.platform_config_path, build_info.language, build_info.type))
+      foreach(string optional_attrib_name; GetLanguageOptionalAttribs(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type))
       {
          new_str = new_str.replace("[ATTRIB: " ~ optional_attrib_name ~ "]", ""); 
       }
    }
       
-   foreach(ExternalVariable extern_var; GetExternalVariables(routine_info, build_info, version_info, new_str))
+   foreach(ExternalVariable extern_var; GetExternalVariables(state, new_str))
    {
       new_str = new_str.replace(extern_var.declare, extern_var.value);
    }
@@ -1482,9 +1466,7 @@ string ProcessTag(RoutineInfo routine_info,
    return new_str;
 }
 
-string LoadStringFromTag(RoutineInfo routine_info, 
-                         BuildInfo build_info,
-                         VersionInfo version_info,
+string LoadStringFromTag(RoutineState state,
                          JSONValue json,
                          string[string] replace_additions = null,
                          string str_attrib_group = "")
@@ -1499,16 +1481,16 @@ string LoadStringFromTag(RoutineInfo routine_info,
          if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)) &&
             (then_json.type() == JSON_TYPE.STRING))
          {
-            bool state = true;
+            bool condit_state = true;
             
             JSONMapString(if_json, (string condit_str, int i)
             {
-               state = state && HandleConditional(routine_info, build_info, version_info, condit_str);
+               condit_state = condit_state && HandleConditional(state, condit_str);
             });
             
-            if(state)
+            if(condit_state)
             {
-               return ProcessTag(routine_info, build_info, version_info, then_json.str(), replace_additions, str_attrib_group);
+               return ProcessTag(state, then_json.str(), replace_additions, str_attrib_group);
             }
             else if(HasJSON(json, "else"))
             {
@@ -1516,7 +1498,7 @@ string LoadStringFromTag(RoutineInfo routine_info,
                
                if(else_json.type() == JSON_TYPE.STRING)
                {
-                  return ProcessTag(routine_info, build_info, version_info, else_json.str(), replace_additions, str_attrib_group);
+                  return ProcessTag(state, else_json.str(), replace_additions, str_attrib_group);
                }
             }
          }
@@ -1531,9 +1513,7 @@ string LoadStringFromTag(RoutineInfo routine_info,
    return null;
 }
 
-bool LoadBoolFromTag(RoutineInfo routine_info, 
-                     BuildInfo build_info,
-                     VersionInfo version_info,
+bool LoadBoolFromTag(RoutineState state,
                      JSONValue json)
 {
    if(json.type() == JSON_TYPE.OBJECT)
@@ -1546,14 +1526,14 @@ bool LoadBoolFromTag(RoutineInfo routine_info,
          if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)) &&
             IsJSONBool(then_json))
          {
-            bool state = true;
+            bool condit_state = true;
             
             JSONMapString(if_json, (string condit_str, int i)
             {
-               state = state && HandleConditional(routine_info, build_info, version_info, condit_str);
+               condit_state = condit_state && HandleConditional(state, condit_str);
             });
             
-            if(state)
+            if(condit_state)
             {
                return (then_json.type() == JSON_TYPE.TRUE);
             }
@@ -1578,9 +1558,7 @@ bool LoadBoolFromTag(RoutineInfo routine_info,
    return false;
 }
 
-void LoadStringArrayFromTag_internal(RoutineInfo routine_info, 
-                                     BuildInfo build_info,
-                                     VersionInfo version_info,
+void LoadStringArrayFromTag_internal(RoutineState state,
                                      JSONValue json,
                                      Array!string *sarray,
                                      string[string] replace_additions = null,
@@ -1594,18 +1572,18 @@ void LoadStringArrayFromTag_internal(RoutineInfo routine_info,
       if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)) &&
          ((then_json.type() == JSON_TYPE.STRING) || (then_json.type() == JSON_TYPE.ARRAY)))
       {
-         bool state = true;
+         bool condit_state = true;
          
          JSONMapString(if_json, (string condit_str, int i)
          {
-            state = state && HandleConditional(routine_info, build_info, version_info, condit_str);
+            condit_state = condit_state && HandleConditional(state, condit_str);
          });
          
-         if(state)
+         if(condit_state)
          {
             JSONMapString(then_json, (string str, int i)
             {
-               sarray.insert(ProcessTag(routine_info, build_info, version_info, str, replace_additions, str_attrib_group));
+               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group));
             });
          }
          else if(HasJSON(json, "else"))
@@ -1614,16 +1592,14 @@ void LoadStringArrayFromTag_internal(RoutineInfo routine_info,
             
             JSONMapString(else_json, (string str, int i)
             {
-               sarray.insert(ProcessTag(routine_info, build_info, version_info, str, replace_additions, str_attrib_group));
+               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group));
             }); 
          }
       }
    }
 }
 
-string[] LoadStringArrayFromTag(RoutineInfo routine_info, 
-                                BuildInfo build_info,
-                                VersionInfo version_info,
+string[] LoadStringArrayFromTag(RoutineState state,
                                 JSONValue json,
                                 string[string] replace_additions = null,
                                 string str_attrib_group = "")
@@ -1636,20 +1612,20 @@ string[] LoadStringArrayFromTag(RoutineInfo routine_info,
       {
          if(json_value.type() == JSON_TYPE.OBJECT)
          {
-            LoadStringArrayFromTag_internal(routine_info, build_info, version_info, json_value, &sarray, replace_additions, str_attrib_group);
+            LoadStringArrayFromTag_internal(state, json_value, &sarray, replace_additions, str_attrib_group);
          }
          else if(json_value.type() == JSON_TYPE.STRING)
          {
             JSONMapString(json_value, (string str, int i)
             {
-               sarray.insert(ProcessTag(routine_info, build_info, version_info, str, replace_additions, str_attrib_group));
+               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group));
             }); 
          }
       }
    }
    else if(json.type() == JSON_TYPE.OBJECT)
    {
-      LoadStringArrayFromTag_internal(routine_info, build_info, version_info, json, &sarray, replace_additions, str_attrib_group);
+      LoadStringArrayFromTag_internal(state, json, &sarray, replace_additions, str_attrib_group);
    }
 
    if(sarray.length > 0)
@@ -1668,9 +1644,7 @@ string[] LoadStringArrayFromTag(RoutineInfo routine_info,
    return null;
 }
 
-CommandInformation[] LoadCommandsFromTag(RoutineInfo routine_info, 
-                                         BuildInfo build_info,
-                                         VersionInfo version_info,
+CommandInformation[] LoadCommandsFromTag(RoutineState state,
                                          JSONValue json,
                                          string[string] replace_additions = null,
                                          string str_attrib_group = "")
@@ -1689,7 +1663,7 @@ CommandInformation[] LoadCommandsFromTag(RoutineInfo routine_info,
          }
          else
          {
-            string[] strings = LoadStringArrayFromTag(routine_info, build_info, version_info, json_value, replace_additions, str_attrib_group);
+            string[] strings = LoadStringArrayFromTag(state, json_value, replace_additions, str_attrib_group);
             
             if(strings == null)
                continue;
@@ -1718,9 +1692,7 @@ CommandInformation[] LoadCommandsFromTag(RoutineInfo routine_info,
    return null;
 }
 
-FileDescription[] LoadFileDescriptionsFromTag(RoutineInfo routine_info, 
-                                              BuildInfo build_info,
-                                              VersionInfo version_info,
+FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
                                               JSONValue json)
 {
    Array!FileDescription file_list = Array!FileDescription();
@@ -1738,7 +1710,7 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineInfo routine_info,
          }
          else
          {
-            string[] strings = LoadStringArrayFromTag(routine_info, build_info, version_info, json_value);
+            string[] strings = LoadStringArrayFromTag(state, json_value);
             
             if(strings == null)
                continue;
@@ -1814,9 +1786,7 @@ bool GetJSONString(RoutineState state, string var_name, JSONString *result)
    {
       JSONValue var_json = routine_json[var_name];
       
-      result._val = LoadStringFromTag(state.routine_info,
-                                      state.build_info,
-                                      state.version_info,
+      result._val = LoadStringFromTag(state,
                                       var_json);
       return true;
    }
@@ -1842,9 +1812,7 @@ bool GetJSONBool(RoutineState state, string var_name, JSONBool *result)
    {
       JSONValue var_json = routine_json[var_name];
       
-      result._val = LoadBoolFromTag(state.routine_info,
-                                    state.build_info,
-                                    state.version_info,
+      result._val = LoadBoolFromTag(state,
                                     var_json);
       return true;
    }
@@ -1870,9 +1838,7 @@ bool GetJSONStringArray(RoutineState state, string var_name, JSONStringArray *re
    {
       JSONValue var_json = routine_json[var_name];
       
-      result._val = LoadStringArrayFromTag(state.routine_info,
-                                           state.build_info,
-                                           state.version_info,
+      result._val = LoadStringArrayFromTag(state,
                                            var_json);
       return true;
    }
@@ -2019,7 +1985,7 @@ void Build(string output_folder, RoutineState state)
    
    if(HasJSON(routine_json, "source"))
    {
-      FileDescription[] source_folders = LoadFileDescriptionsFromTag(state.routine_info, state.build_info, state.version_info, routine_json["source"]);
+      FileDescription[] source_folders = LoadFileDescriptionsFromTag(state, routine_json["source"]);
       
       foreach(FileDescription source; source_folders)
       {
@@ -2046,7 +2012,7 @@ void Build(string output_folder, RoutineState state)
    
    if(HasJSON(routine_json, "dependencies"))
    {
-      FileDescription[] dependency_items = LoadFileDescriptionsFromTag(state.routine_info, state.build_info, state.version_info, routine_json["dependencies"]);
+      FileDescription[] dependency_items = LoadFileDescriptionsFromTag(state, routine_json["dependencies"]);
       
       foreach(FileDescription dep; dependency_items)
       {
@@ -2085,9 +2051,7 @@ void Build(string output_folder, RoutineState state)
    
    string command_batch = "";
    
-   string[] command_templates = LoadStringArrayFromTag(state.routine_info,
-                                                       state.build_info,
-                                                       state.version_info,
+   string[] command_templates = LoadStringArrayFromTag(state,
                                                        GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type));
    
    foreach(string command_template; command_templates)

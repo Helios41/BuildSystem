@@ -13,13 +13,13 @@ import std.container;
 /**
 TO DO:   
    -either build for host, all available or specified platforms (default host only)
-   -specify platforms & host in the platform config on a per language basis? (If not move types out of "types" obj)
    -make the dll build script use /EXPORT instead of a .def & use delayed variable expansion
    
    -Clean up code & comments
    -documentation
    -default platform configs
-
+   -FIX_ME.txt!
+   
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
    -Is setting the platform to the host for the regular operations the right thing to do?
@@ -117,13 +117,25 @@ struct RoutineInfo
 struct ExternalVariable
 {
    string declare;
-   string value;
+   string[] value;
 }
 
 struct CommandInformation
 {
    string command;
    string[] params;
+}
+
+enum TagType
+{
+   String,
+   StringArray
+}
+
+union ProcessedTag
+{
+   string str;
+   string[] array;
 }
 
 const bool default_build_silent = false;
@@ -270,8 +282,6 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    build_info.can_build = true;
    build_info.build_folder = "";
    build_info.project_name = "";
-   build_info.platform = GetHost(state.routine_info.platform_config_path);
-   build_info.platform.optimized = true;
    build_info.silent_build = silent_build;
    
    JSONString project;
@@ -292,6 +302,12 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    else
    {
       build_info.can_build = false;
+   }
+   
+   if(build_info.can_build)
+   {
+      build_info.platform = GetHost(state.routine_info.platform_config_path, build_info.language);
+      build_info.platform.optimized = true;
    }
    
    JSONString type;
@@ -320,6 +336,7 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
       build_info.platform.optimized = optimized.get();
    }
    
+   //-------------------
    JSONStringArray attributes;
    if(GetJSONStringArray(state, "attributes", &attributes))
    {
@@ -336,6 +353,7 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
          }
       }
    }
+   //------------------
    
    return *build_info;
 }
@@ -648,7 +666,8 @@ void BuildOperation(RoutineState state)
       }
       
       JSONValue routine_json = GetRoutineJSON(state.routine_info);
-      string[int][string] platforms = GetAvailablePlatforms(state.routine_info.platform_config_path);
+      string[int][string] platforms = GetAvailablePlatforms(state.routine_info.platform_config_path,
+                                                            state.build_info.language);
       
       foreach(string OS, string[int] archs; platforms)
       {
@@ -973,28 +992,38 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
    return JSONValue.init; 
 }
 
-PlatformInfo GetHost(string file_path)
+PlatformInfo GetHost(string file_path, string language)
 {
    WriteMsg("Get Host");
    
    JSONValue file_json = parseJSON(readText(file_path));
    
-   if(HasJSON(file_json, "host"))
+   if(HasJSON(file_json, "languages"))
    {
-      JSONValue host_json = file_json["host"];
+      JSONValue languages_json = file_json["languages"];
       
-      if(host_json.type() == JSON_TYPE.ARRAY)
+      if(HasJSON(languages_json, language))
       {
-         if(host_json.array.length == 2)
+         JSONValue language_json = languages_json[language];
+         
+         if(HasJSON(language_json, "host"))
          {
-            if((host_json.array[0].type() == JSON_TYPE.STRING) &&
-               (host_json.array[1].type() == JSON_TYPE.STRING))
+            JSONValue host_json = language_json["host"];
+            
+            if(host_json.type() == JSON_TYPE.ARRAY)
             {
-               PlatformInfo info;
-               info.OS = host_json[0].str();
-               info.arch = host_json[1].str();
-               return info;
-            } 
+               if(host_json.array.length == 2)
+               {
+                  if((host_json[0].type() == JSON_TYPE.STRING) &&
+                     (host_json[1].type() == JSON_TYPE.STRING))
+                  {
+                     PlatformInfo info;
+                     info.OS = host_json[0].str();
+                     info.arch = host_json[1].str();
+                     return info;
+                  }
+               }
+            }
          }
       }
    }
@@ -1138,7 +1167,7 @@ string GetLanguageFileEnding(string file_path, string language_name, string buil
    return null;
 }
 
-string[int][string] GetAvailablePlatforms(string file_path)
+string[int][string] GetAvailablePlatforms(string file_path, string language)
 {
    if(!isFile(file_path))
    {
@@ -1150,35 +1179,41 @@ string[int][string] GetAvailablePlatforms(string file_path)
    
    string[int][string] platforms;
    
-   if(HasJSON(file_json, "platforms"))
+   if(HasJSON(file_json, "languages"))
    {
-      JSONValue platforms_json = file_json["platforms"];
+      JSONValue languages_json = file_json["languages"];
       
-      if(platforms_json.type() == JSON_TYPE.ARRAY)
+      if(HasJSON(languages_json, language))
       {
-         string current_platform = "";
-      
-         foreach(JSONValue platform_value; platforms_json.array)
+         JSONValue language_json = languages_json[language];
+         
+         if(HasJSON(language_json, "platforms"))
          {
-            if(platform_value.type() == JSON_TYPE.STRING)
+            JSONValue platforms_json = language_json["platforms"];
+            
+            if(platforms_json.type() == JSON_TYPE.ARRAY)
             {
-               current_platform = platform_value.str();
-            }
-            else if(platform_value.type() == JSON_TYPE.ARRAY)
-            {
-               if(current_platform != "")
+               string current_platform = "";
+               
+               foreach(JSONValue platform_json; platforms_json.array)
                {
-                  int index = 0;
-                  
-                  foreach(JSONValue arch_json; platform_value.array)
+                  if(platform_json.type() == JSON_TYPE.STRING)
                   {
-                     if(arch_json.type() == JSON_TYPE.STRING)
-                     {
-                        platforms[current_platform][index++] = arch_json.str();
-                     }
+                     current_platform = platform_json.str();
                   }
-                  
-                  current_platform = "";
+                  else if(platform_json.type() == JSON_TYPE.ARRAY)
+                  {
+                     //TODO: use LoadStringArrayFromTag?
+                     int index = 0;
+                     
+                     foreach(JSONValue arch_json; platform_json.array)
+                     {
+                        if(arch_json.type() == JSON_TYPE.STRING)
+                           platforms[current_platform][index++] = arch_json.str();
+                     }
+                     
+                     current_platform = "";
+                  }
                }
             }
          }
@@ -1237,25 +1272,14 @@ ExternalVariable[] GetExternalVariables(RoutineState state,
       
       ExternalVariable extern_var;
       extern_var.declare = extern_decl;
-      extern_var.value = "";
+      extern_var.value = null;
       
       if(HasJSON(extern_json, var_name))
       {
          string[] extern_var_value_raw = LoadStringArrayFromTag(extern_state,
                                                                 extern_json[var_name]);
          
-         if(extern_var_value_raw != null)
-         {
-            string extern_var_value = "";
-         
-            foreach(string str; extern_var_value_raw)
-            {
-               extern_var_value = extern_var_value ~ " " ~ str;
-            }
-            
-            extern_var_value = extern_var_value[1 .. $];
-            extern_var.value = extern_var_value;
-         }                                        
+         extern_var.value = extern_var_value_raw;     
       }
       
       extern_vars[i] = extern_var;
@@ -1264,6 +1288,21 @@ ExternalVariable[] GetExternalVariables(RoutineState state,
    }
    
    return extern_vars;
+}
+
+string CombindStrings(string[] strings)
+{
+   string result = "";
+
+   foreach(string str; strings)
+   {
+      result = result ~ " " ~ str;
+   }
+   
+   if(result.length > 1)
+      return result[1 .. $];
+      
+   return result;
 }
 
 RoutineInfo MakeRoutine(string file_path,
@@ -1359,11 +1398,10 @@ bool JSONMapString(JSONValue json, void delegate(string str, int i) map_func)
    return true;
 }
 
-string GetAttribString(RoutineState state,
+string[] GetAttribValue(RoutineState state,
                        string attrib_name)
 {
    WriteMsg("Loading ", attrib_name, " from ", state.routine_info.path);
-   string attrib_value = "";
 
    JSONValue routine_json = GetRoutineJSON(state.routine_info);
    
@@ -1373,16 +1411,11 @@ string GetAttribString(RoutineState state,
       
       string[] attribs = LoadStringArrayFromTag(state, attrib_json, null, attrib_name);
       
-      foreach(string str; attribs)
-      {
-         attrib_value = attrib_value ~ " " ~ str;
-      }
+      if(attribs.length > 0)
+         return attribs;
    }
-   
-   if(attrib_value.length > 0)
-      return attrib_value[1 .. $];
       
-   return "";
+   return new string[0];
 }
 
 bool HandleConditional(RoutineState state,
@@ -1422,7 +1455,8 @@ bool HandleConditional(RoutineState state,
 string ProcessTag(RoutineState state,
                   string str,
                   string[string] replace_additions,
-                  string str_attrib_group)
+                  string str_attrib_group,
+                  TagType tag_type)
 { 
    string new_str = str.replace("[ARCH_NAME]", state.build_info.platform.arch)
                        .replace("[OS_NAME]", state.build_info.platform.OS)
@@ -1432,7 +1466,9 @@ string ProcessTag(RoutineState state,
                        .replace("[PATCH_VERSION]", to!string(state.version_info.patch))
                        .replace("[VERSION_TYPE]", state.version_info.appended)
                        .replace("[VERSION]", GetVersionString(state.version_info));
-                       
+   
+   ProcessedTag result;         
+   
    if(replace_additions != null)
    {
       foreach(string orig_str, string repl_str; replace_additions)
@@ -1446,7 +1482,7 @@ string ProcessTag(RoutineState state,
       if(attrib_name != str_attrib_group)
       {
          new_str = new_str.replace("[ATTRIB: " ~ attrib_name ~ "]",
-                                   GetAttribString(state, attrib_name));
+                                   CombindStrings(GetAttribValue(state, attrib_name)));
       }
    }
    
@@ -1460,7 +1496,14 @@ string ProcessTag(RoutineState state,
       
    foreach(ExternalVariable extern_var; GetExternalVariables(state, new_str))
    {
-      new_str = new_str.replace(extern_var.declare, extern_var.value);
+      //if(tag_type == TagType.String)
+      {
+         new_str = new_str.replace(extern_var.declare, CombindStrings(extern_var.value));
+      }
+      //else if(tag_type == TagType.StringArray)
+      {
+         
+      }
    }
    
    return new_str;
@@ -1490,7 +1533,7 @@ string LoadStringFromTag(RoutineState state,
             
             if(condit_state)
             {
-               return ProcessTag(state, then_json.str(), replace_additions, str_attrib_group);
+               return ProcessTag(state, then_json.str(), replace_additions, str_attrib_group, TagType.String);
             }
             else if(HasJSON(json, "else"))
             {
@@ -1498,7 +1541,7 @@ string LoadStringFromTag(RoutineState state,
                
                if(else_json.type() == JSON_TYPE.STRING)
                {
-                  return ProcessTag(state, else_json.str(), replace_additions, str_attrib_group);
+                  return ProcessTag(state, else_json.str(), replace_additions, str_attrib_group, TagType.String);
                }
             }
          }
@@ -1583,7 +1626,8 @@ void LoadStringArrayFromTag_internal(RoutineState state,
          {
             JSONMapString(then_json, (string str, int i)
             {
-               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group));
+               //TODO: TagType.StringArray
+               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group, TagType.String));
             });
          }
          else if(HasJSON(json, "else"))
@@ -1592,7 +1636,8 @@ void LoadStringArrayFromTag_internal(RoutineState state,
             
             JSONMapString(else_json, (string str, int i)
             {
-               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group));
+               //TODO: TagType.StringArray
+               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group, TagType.String));
             }); 
          }
       }
@@ -1618,7 +1663,8 @@ string[] LoadStringArrayFromTag(RoutineState state,
          {
             JSONMapString(json_value, (string str, int i)
             {
-               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group));
+               //TODO: TagType.StringArray
+               sarray.insert(ProcessTag(state, str, replace_additions, str_attrib_group, TagType.String));
             }); 
          }
       }

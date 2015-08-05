@@ -1,0 +1,12 @@
+std.file.FileException@std\file.d(495): ./configs/Test_Func1_2a676164-1023-421f-
+99e5-20bcf0983c73\Test.exe: Access is denied.
+----------------
+0x0043A250 in @safe int std.file.cenforce!(int).cenforce(int, lazy const(char)[]
+, immutable(char)[], uint)
+0x00442515 in void std.file.rmdirRecurse(ref std.file.DirEntry)
+0x0043ACBA in void std.file.rmdirRecurse(std.file.DirEntry)
+0x004040AD in void app.ExecutePerOperations(immutable(char)[], app.RoutineState)
+ at D:\GitRepo\BuildSystem\source\app.d(630)
+0x004043E3 in D3app14BuildOperationFS3app12RoutineStateZ14__foreachbody2MFKAyaKH
+iAyaZ14__foreachbody3MFKAyaZi at D:\GitRepo\BuildSystem\source\app.d(689)
+0x00432AEB in _aaApply

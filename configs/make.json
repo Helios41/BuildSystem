@@ -16,6 +16,7 @@
          ["print", "just built!"],
          ["||", "DLTest Exports: [EXTERN make_dl.json>Make>exports]"],
          ["||", "DLTest Exports: [EXTERN make_dl.json>exports]"],
+         ["||", "Stuff Attrib: [ATTRIB: stuff]"],
          ["print", "We're on an OS! ", {"if": "OS=Windows", "then": "We're on Windows!"}],
          {
             "if": "OS=Windows",
@@ -54,6 +55,12 @@
             "then": "SomeLib.so"
          },
          ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".lib"]
+      ],
+      "attributes": ["stuff"],
+      "stuff":
+      [
+         "stuff1",
+         "stuff2"
       ],
       "optimized": false,
       "project": "Test",

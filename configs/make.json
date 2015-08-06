@@ -14,9 +14,19 @@
          ["print", "before building!"],
          "build",
          ["print", "just built!"],
-         ["||", "DLTest Exports: [EXTERN make_dl.json>Make>exports]"],
-         ["||", "DLTest Exports: [EXTERN make_dl.json>exports]"],
-         ["||", "Stuff Attrib: [ATTRIB: stuff]"],
+         ["||", "DLTest Exports: [VAR make_dl.json>Make>exports]"],
+         ["||", "DLTest Exports: [VAR make_dl.json>exports] Ending"],
+         ["||", "My Target: [VAR target]"],
+         {
+            "if": "HASVAR=type",
+            "then": ["print", "has type"]
+         },
+         {
+            "if": "HASVAR=random",
+            "then": ["print", "has random"],
+            "else": ["print", "doesn't have random"]
+         },
+         ["||", "Stuff variable: [Var stuff]"],
          ["print", "We're on an OS! ", {"if": "OS=Windows", "then": "We're on Windows!"}],
          {
             "if": "OS=Windows",
@@ -44,6 +54,7 @@
          "../test/helloworld.c",
          ["../test/", ".h"]
       ],
+      "target": "all",
       "dependencies": 
       [
          {

@@ -47,7 +47,7 @@
                   },
                   "echo LIBRARY [PROJECT_NAME] > ./exports.def",
                   "echo EXPORTS >> ./exports.def",
-                  "for /f %a in (\"[ATTRIB: exports]\") do ( echo \t %a >> ./exports.def )",
+                  "for /f %a in (\"[VAR exports]\") do ( echo \t %a >> ./exports.def )",
                   {
                      "if": "OPT=true",
                      "then": "cl /O2 /c *.c",

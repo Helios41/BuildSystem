@@ -10,7 +10,7 @@
          "../test/DLibrary.c",
          ["../test/", ".h"]
       ],
-      "attributes": ["exports"],
+      "target": "all",
       "exports": 
       [
          "add_integers_foo",

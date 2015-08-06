@@ -6,6 +6,7 @@
       "type": "static",
       "build": "../static_lib",
       "source": "../test/static_lib.c",
+      "target": "all",
       "project": "static_lib",
       "version": [0, 0, 0]
    }

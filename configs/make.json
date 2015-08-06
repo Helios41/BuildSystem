@@ -17,6 +17,7 @@
          ["||", "DLTest Exports: [VAR make_dl.json>Make>exports]"],
          ["||", "DLTest Exports: [VAR make_dl.json>exports] Ending"],
          ["||", "My Target: [VAR target]"],
+         ["||", "LIB Version: [VAR make_lib.json>version_string]"],
          {
             "if": "HASVAR=type",
             "then": ["print", "has type"]
@@ -26,7 +27,7 @@
             "then": ["print", "has random"],
             "else": ["print", "doesn't have random"]
          },
-         ["||", "Stuff variable: [Var stuff]"],
+         ["||", "Stuff variable: [VAR stuff]"],
          ["print", "We're on an OS! ", {"if": "OS=Windows", "then": "We're on Windows!"}],
          {
             "if": "OS=Windows",
@@ -54,12 +55,12 @@
          "../test/helloworld.c",
          ["../test/", ".h"]
       ],
-      "target": "all",
+      "target": ["Windows", ["X86_64", "IA-64"]],
       "dependencies": 
       [
          {
             "if": "OS=Windows",
-            "then": "User32.lib"
+            "then": "[VAR WindowsDeps]"
          },
          {
             "if": "OS=FakeLinux",
@@ -67,7 +68,11 @@
          },
          ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".lib"]
       ],
-      "attributes": ["stuff"],
+      "WindowsDeps":
+      [
+         "Kernel32.lib",
+         "User32.lib"
+      ],
       "stuff":
       [
          "stuff1",

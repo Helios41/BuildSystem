@@ -12,7 +12,7 @@
          {
             "executable": 
             {
-               "ending": ".exe",
+               "endings": ".exe",
                "commands":
                [  
                   "cd [BUILD_DIRECTORY]",
@@ -33,7 +33,7 @@
             },
             "dynamic": 
             {
-               "ending": ".dll",
+               "endings": [".dll", ".lib"],
                "commands":
                [
                   "cd [BUILD_DIRECTORY]",
@@ -47,7 +47,7 @@
                   },
                   "echo LIBRARY [PROJECT_NAME] > ./exports.def",
                   "echo EXPORTS >> ./exports.def",
-                  "for /f %a in (\"[VAR exports]\") do ( echo \t %a >> ./exports.def )",
+                  "(for %a in ([VAR exports]) do ( echo \t %a >> ./exports.def )) 1> nul",
                   {
                      "if": "OPT=true",
                      "then": "cl /O2 /c *.c",
@@ -58,7 +58,7 @@
             },
             "static": 
             {
-               "ending": ".lib",
+               "endings": ".lib",
                "commands":
                [
                   "cd [BUILD_DIRECTORY]",

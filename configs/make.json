@@ -14,8 +14,8 @@
          ["print", "before building!"],
          "build",
          ["print", "just built!"],
-         ["||", "DLTest Exports: [VAR make_dl.json>Make>exports]"],
-         ["||", "DLTest Exports: [VAR make_dl.json>exports] Ending"],
+         ["||", "-separator", " ", "DLTest Exports:[VAR make_dl.json>Make>exports]"],
+         ["||", "-separator", " ", "DLTest Exports:[VAR make_dl.json>exports]Ending"],
          ["||", "My Target: [VAR target]"],
          ["||", "LIB Version: [VAR make_lib.json>version_string]"],
          {
@@ -27,7 +27,7 @@
             "then": ["print", "has random"],
             "else": ["print", "doesn't have random"]
          },
-         ["||", "Stuff variable: [VAR stuff]"],
+         ["||", "-separator", " ", "Stuff variable:[VAR stuff]"],
          ["print", "We're on an OS! ", {"if": "OS=Windows", "then": "We're on Windows!"}],
          {
             "if": "OS=Windows",
@@ -80,7 +80,7 @@
       ],
       "optimized": false,
       "project": "Test",
-      "version": [0, 0, 0, "test"],
+      "version": [0, 0, 1, "test"],
       "version_break": "Ll"
    },
    "MoveBob":

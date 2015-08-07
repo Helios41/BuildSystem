@@ -13,16 +13,13 @@ import std.datetime;
 
 /**
 TO DO:   
-   -move languages out of "languages" object in platform config?
    -warning if target is not supported
-   -FIX: why is version_info.appended defaulting to "test"?
    
    -Clean up code & comments
    -documentation
    -default platform configs
    
    -update .json.new file by checking file date of original
-   -ability to add characters between params in print operation
    
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
@@ -173,6 +170,7 @@ void LaunchConfig(string default_platform_config_path,
       if(regular_config.stdTime() > new_config.stdTime())
       {
          //TODO: update .json.new
+         writeln("The config file has been updated without the .new file");
       }
    }
 
@@ -281,7 +279,7 @@ string GetDefaultRoutine(string file_path)
       exit(-1);
    }
 
-   JSONValue file_json = parseJSON(readText(file_path));
+   JSONValue file_json = LoadJSONFile(file_path);
    
    if(HasJSON(file_json, "default"))
    {
@@ -461,7 +459,7 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
       exit(-1);
    }
    
-   JSONValue file_json = parseJSON(readText(file_path));
+   JSONValue file_json = LoadJSONFile(file_path);
    
    if(!HasJSON(file_json, routine_name))
       return;
@@ -549,12 +547,7 @@ void ExecuteOperations(RoutineState state)
             
             case "print":
             {
-               string to_print = "";
-               foreach(string args; operation_params)
-               {
-                  to_print = to_print ~ args;
-               }
-               writeln("[print] ", to_print);
+               PrintOperation(operation_params);
             }
             break;
             
@@ -667,12 +660,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
             
             case "print":
             {
-               string to_print = "";
-               foreach(string args; operation_params)
-               {
-                  to_print = to_print ~ args;
-               }
-               writeln("[print] ", to_print);
+               PrintOperation(operation_params);
             }
             break;
             
@@ -694,6 +682,8 @@ void BuildOperation(RoutineState state)
          version_info = UpdateVersions(state.routine_info, state.version_info); 
       }
       
+      //TODO: fix version not being used
+      
       foreach(BuildTarget target; state.build_info.targets)
       {
          foreach(string arch; target.archs)
@@ -702,6 +692,7 @@ void BuildOperation(RoutineState state)
             
             per_platform_state.build_info.platform.arch = arch;
             per_platform_state.build_info.platform.OS = target.OS;
+            per_platform_state.version_info = version_info;
             
             string output_directory_noslash = per_platform_state.build_info.build_folder.endsWith("/") ? per_platform_state.build_info.build_folder[0 .. per_platform_state.build_info.build_folder.lastIndexOf("/")] : per_platform_state.build_info.build_folder;
             string output_folder = output_directory_noslash ~ "/" ~ per_platform_state.build_info.platform.OS ~ "_" ~ per_platform_state.build_info.platform.arch;
@@ -888,6 +879,56 @@ void ReplaceOperation(RoutineInfo routine_info, string[] params)
    }
 }
 
+void PrintOperation(string[] params)
+{
+   string to_print = "";
+   string separator = "";
+   
+   for(int i = 0; params.length > i; ++i)
+   {
+      string arg = params[i];
+      
+      if(arg.startsWith("-"))
+      {
+         switch(arg)
+         {
+            case "-separator":
+            {
+               if(params.length > (i + 1))
+               {
+                  if(separator == "")
+                  {
+                     separator = params[++i];
+                  }
+                  else
+                  {
+                     writeln("[print error] Separator can only be set once");
+                  }
+               }
+               else
+               {
+                  writeln("[print error] Missing argument for option \"-separator\"");
+               }
+            }
+            break;
+            
+            default:
+         }
+      }
+      else
+      {
+         to_print = to_print ~ separator ~ arg;
+      }
+   }
+   
+   if(to_print.startsWith(separator))
+   {
+      to_print = to_print[separator.length .. $];
+   }
+   
+   writeln("[print] ", to_print);
+}
+
 string GetVersionString(VersionInfo version_info)
 {
    string version_string = to!string(version_info.major) ~ version_info.breakS
@@ -900,7 +941,7 @@ string GetVersionString(VersionInfo version_info)
 
 VersionInfo UpdateVersions(RoutineInfo routine, VersionInfo version_info)
 {
-   JSONValue file_json = parseJSON(readText(routine.path));
+   JSONValue file_json = LoadJSONFile(routine.path);
    bool update_versions = true;
    
    if(version_info.type != VersionType.None)
@@ -971,9 +1012,25 @@ VersionInfo UpdateVersions(RoutineInfo routine, VersionInfo version_info)
    return version_info;
 }
 
+JSONValue LoadJSONFile(string path)
+{
+   try
+   {
+      string json_text = readText(path);
+      JSONValue json_value = parseJSON(json_text);
+      return json_value;
+   }
+   catch(JSONException e)
+   {
+      writeln(e);
+      exit(-1);
+      return JSONValue.init;
+   }
+}
+
 JSONValue GetRoutineJSON(RoutineInfo routine)
 {
-   JSONValue file_json = parseJSON(readText(routine.path));
+   JSONValue file_json = LoadJSONFile(routine.path);
    
    if(HasJSON(file_json, routine.name))
    {
@@ -998,7 +1055,7 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
       exit(-1);
    }
    
-   JSONValue file_json = parseJSON(readText(file_path));
+   JSONValue file_json = LoadJSONFile(file_path);
    
    if(HasJSON(file_json, "languages"))
    {
@@ -1021,7 +1078,7 @@ PlatformInfo GetHostInfo(string file_path, string language)
 {
    WriteMsg("Get Host");
    
-   JSONValue file_json = parseJSON(readText(file_path));
+   JSONValue file_json = LoadJSONFile(file_path);
    
    if(HasJSON(file_json, "languages"))
    {
@@ -1063,7 +1120,7 @@ BuildTarget GetHost(string file_path, string language)
 {
    WriteMsg("Get Host");
    
-   JSONValue file_json = parseJSON(readText(file_path));
+   JSONValue file_json = LoadJSONFile(file_path);
    
    if(HasJSON(file_json, "languages"))
    {
@@ -1203,7 +1260,7 @@ string[int][string] GetAvailablePlatforms(string file_path, string language)
       exit(-1);
    }
    
-   JSONValue file_json = parseJSON(readText(file_path));
+   JSONValue file_json = LoadJSONFile(file_path);
    
    string[int][string] platforms;
    
@@ -1320,8 +1377,8 @@ Variable[] GetVariables(RoutineState state,
       
       RoutineState access_state;
       access_state.routine_info = MakeRoutine(file_path, routine_name, state.routine_info.platform_config_path);
-      access_state.build_info = GetBuildInfo(state, state.build_info.silent_build);
-      access_state.version_info = GetVersionInfo(state, VersionType.None);
+      access_state.build_info = GetBuildInfo(access_state, state.build_info.silent_build);
+      access_state.version_info = GetVersionInfo(access_state, VersionType.None);
       
       JSONValue access_json = GetRoutineJSON(access_state.routine_info);
       
@@ -1377,7 +1434,7 @@ RoutineInfo MakeRoutine(string file_path,
    
    if(can_specify_platform_config)
    {
-      JSONValue file_json = parseJSON(readText(file_path));
+      JSONValue file_json = LoadJSONFile(file_path);
       
       if(HasJSON(file_json, routine_name))
       {

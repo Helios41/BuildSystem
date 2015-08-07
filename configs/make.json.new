@@ -1,0 +1,228 @@
+{
+    "CallTest": {
+        "operations": [
+            [
+                "call",
+                "test.json",
+                "Func1",
+                "Func2"
+            ],
+            [
+                "||",
+                "test.json"
+            ]
+        ]
+    },
+    "Func1": {
+        "WindowsDeps": [
+            "Kernel32.lib",
+            "User32.lib"
+        ],
+        "build": "..\/testbuild\/",
+        "dependencies": [
+            {
+                "if": "OS=Windows",
+                "then": "[VAR WindowsDeps]"
+            },
+            {
+                "if": "OS=FakeLinux",
+                "then": "SomeLib.so"
+            },
+            [
+                "..\/static_lib\/[OS_NAME]_[ARCH_NAME]\/",
+                "static_lib",
+                ".lib"
+            ]
+        ],
+        "language": "C",
+        "operations": [
+            [
+                "call",
+                ".\/make_dl.json",
+                "-pSilent"
+            ],
+            [
+                "||",
+                ".\/make_lib.json",
+                "-pSilent"
+            ],
+            [
+                "copy",
+                "..\/dub.json",
+                "..\/bob.json"
+            ],
+            [
+                "||",
+                "..\/",
+                "..\/test\/",
+                ".random"
+            ],
+            [
+                "delete",
+                "..\/toremove.txt"
+            ],
+            [
+                "||",
+                "..\/bob.json"
+            ],
+            [
+                "print",
+                "before building!"
+            ],
+            "build",
+            [
+                "print",
+                "just built!"
+            ],
+            [
+                "||",
+                "-separator",
+                " ",
+                "DLTest Exports:[VAR make_dl.json>Make>exports]"
+            ],
+            [
+                "||",
+                "-separator",
+                " ",
+                "DLTest Exports:[VAR make_dl.json>exports]Ending"
+            ],
+            [
+                "||",
+                "My Target: [VAR target]"
+            ],
+            [
+                "||",
+                "LIB Version: [VAR make_lib.json>version_string]"
+            ],
+            {
+                "if": "HASVAR=type",
+                "then": [
+                    "print",
+                    "has type"
+                ]
+            },
+            {
+                "else": [
+                    "print",
+                    "doesn't have random"
+                ],
+                "if": "HASVAR=random",
+                "then": [
+                    "print",
+                    "has random"
+                ]
+            },
+            [
+                "||",
+                "-separator",
+                " ",
+                "Stuff variable:[VAR stuff]"
+            ],
+            [
+                "print",
+                "We're on an OS! ",
+                {
+                    "if": "OS=Windows",
+                    "then": "We're on Windows!"
+                }
+            ],
+            {
+                "if": "OS=Windows",
+                "then": [
+                    "print",
+                    "Printed on windows"
+                ]
+            },
+            {
+                "if": "OS=Linux",
+                "then": [
+                    "print",
+                    "Printed on Linux"
+                ]
+            },
+            [
+                "call",
+                "=",
+                "SayHi"
+            ]
+        ],
+        "optimized": false,
+        "per-operations": [
+            [
+                "copy",
+                "..\/dub.json",
+                "[OUTPUT_DIRECTORY]\/some_stuff\/bob.json"
+            ],
+            [
+                "||",
+                "..\/",
+                "[OUTPUT_DIRECTORY]\/jsons\/",
+                ".json",
+                "1"
+            ],
+            [
+                "||",
+                "..\/",
+                "[OUTPUT_DIRECTORY]\/djson\/",
+                "d",
+                ".json",
+                "1"
+            ],
+            [
+                "||",
+                "..\/dltest\/[OS_NAME]_[ARCH_NAME]\/DLTest.dll",
+                "[OUTPUT_DIRECTORY]\/DLTest.dll"
+            ],
+            "build"
+        ],
+        "project": "Test",
+        "source": [
+            [
+                "Remote",
+                "https:\/\/raw.githubusercontent.com\/Helios41\/BuildSystem\/master\/test\/remote_file.h"
+            ],
+            "..\/test\/helloworld.c",
+            [
+                "..\/test\/",
+                ".h"
+            ]
+        ],
+        "stuff": [
+            "stuff1",
+            "stuff2"
+        ],
+        "target": [
+            "Windows",
+            [
+                "X86_64",
+                "IA-64"
+            ]
+        ],
+        "type": "executable",
+        "version": [
+            0,
+            0,
+            4,
+            "test"
+        ],
+        "version_break": "Ll"
+    },
+    "MoveBob": {
+        "operations": [
+            [
+                "move",
+                "..\/bob.json",
+                "..\/test\/bob.json"
+            ]
+        ]
+    },
+    "SayHi": {
+        "operations": [
+            [
+                "print",
+                "hello"
+            ]
+        ]
+    },
+    "default": "Func1"
+}

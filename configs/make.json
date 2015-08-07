@@ -80,7 +80,7 @@
       ],
       "optimized": false,
       "project": "Test",
-      "version": [0, 0, 1, "test"],
+      "version": [0, 0, 0, "test"],
       "version_break": "Ll"
    },
    "MoveBob":

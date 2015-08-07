@@ -13,8 +13,6 @@ import std.datetime;
 
 /**
 TO DO:   
-   -warning if target is not supported
-   
    -Clean up code & comments
    -documentation
    -default platform configs
@@ -93,6 +91,7 @@ struct RoutineState
    BuildInfo build_info;
    VersionInfo version_info;
    RoutineInfo routine_info;
+   Array!string *error_log;
 }
 
 struct BuildTarget
@@ -154,6 +153,8 @@ void LaunchConfig(string default_platform_config_path,
                   string[] args,
                   bool inhereted_build_silent = default_build_silent)
 {
+   bool can_version = true;
+
    if(exists(config_file_path ~ ".new"))
    {
       string regular_config_path = config_file_path;
@@ -169,8 +170,11 @@ void LaunchConfig(string default_platform_config_path,
       
       if(regular_config.stdTime() > new_config.stdTime())
       {
-         //TODO: update .json.new
-         writeln("The config file has been updated without the .new file");
+         writeln("----------------------------------------------------------");
+         writeln("The config file has been updated without the \".new\" file");
+         writeln("This will eventually auto update the \".new\" File");
+         writeln("----------------------------------------------------------");
+         can_version = false;
       }
    }
 
@@ -189,16 +193,25 @@ void LaunchConfig(string default_platform_config_path,
          switch(argument)
          {
             case "-major":
-               version_type = VersionType.Major;
-               break;
+            {
+               if(can_version)
+                  version_type = VersionType.Major;
+            }
+            break;
                
             case "-minor":
-               version_type = VersionType.Minor;
-               break;
+            {
+               if(can_version)
+                  version_type = VersionType.Minor;
+            }
+            break;
                
             case "-patch":
-               version_type = VersionType.Patch;
-               break;
+            {
+               if(can_version)
+                  version_type = VersionType.Patch;
+            }
+            break;
             
             case "-config":
             {
@@ -275,8 +288,7 @@ string GetDefaultRoutine(string file_path)
 
    if((!exists(file_path)) || (!isFile(file_path)))
    {
-      writeln(file_path ~ " not found!");
-      exit(-1);
+      ExitError(file_path ~ " not found!");
    }
 
    JSONValue file_json = LoadJSONFile(file_path);
@@ -290,8 +302,7 @@ string GetDefaultRoutine(string file_path)
    }
    else
    {
-      writeln("missing default routine");
-      exit(-1);
+      ExitError("missing default routine");
    }
    
    return null;
@@ -455,8 +466,7 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
 
    if((!exists(file_path)) || (!isFile(file_path)))
    {
-      writeln(file_path ~ " not found!");
-      exit(-1);
+      ExitError(file_path ~ " not found!");
    }
    
    JSONValue file_json = LoadJSONFile(file_path);
@@ -468,13 +478,20 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
    
    if(routine_json.type() == JSON_TYPE.OBJECT)
    {
+      Array!string error_log = Array!string();
       RoutineState state;
-   
+      
+      state.error_log = &error_log;
       state.routine_info = MakeRoutine(file_path, routine_name, default_platform_config_path);
       state.build_info = GetBuildInfo(state, silent_build);
       state.version_info = GetVersionInfo(state, version_type);
       
       ExecuteOperations(state);
+      
+      foreach(string error; error_log)
+      {
+         writeln("[" ~ state.build_info.project_name ~ "] " ~ error);
+      }
    }
 }
 
@@ -681,8 +698,6 @@ void BuildOperation(RoutineState state)
       {
          version_info = UpdateVersions(state.routine_info, state.version_info); 
       }
-      
-      //TODO: fix version not being used
       
       foreach(BuildTarget target; state.build_info.targets)
       {
@@ -1022,8 +1037,7 @@ JSONValue LoadJSONFile(string path)
    }
    catch(JSONException e)
    {
-      writeln(e);
-      exit(-1);
+      ExitError(e.text);
       return JSONValue.init;
    }
 }
@@ -1051,8 +1065,7 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
 {
    if(!isFile(file_path))
    {
-      writeln(file_path ~ " not found!");
-      exit(-1);
+      ExitError(file_path ~ " not found!");
    }
    
    JSONValue file_json = LoadJSONFile(file_path);
@@ -1068,8 +1081,7 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
       }
    }
    
-   writeln("Platform config missing for language \"", language_name, "\"");
-   exit(-1);
+   ExitError("Platform config missing for language \"" ~ language_name ~ "\"");
    
    return JSONValue.init; 
 }
@@ -1110,8 +1122,7 @@ PlatformInfo GetHostInfo(string file_path, string language)
       }
    }
    
-   writeln("Platform config missing host");
-   exit(-1);
+   ExitError("Platform config missing host");
 
    return PlatformInfo.init;
 }
@@ -1153,8 +1164,7 @@ BuildTarget GetHost(string file_path, string language)
       }
    }
    
-   writeln("Platform config missing host");
-   exit(-1);
+   ExitError("Platform config missing host");
 
    return BuildTarget.init;
 }
@@ -1178,8 +1188,7 @@ JSONValue GetLanguageCommandTag(string file_path, string language_name, string b
       }
    }
    
-   writeln("Platform config missing commands for language ", language_name, "(", build_type, ")");
-   exit(-1);
+   ExitError("Platform config missing commands for language " ~ language_name ~ "(" ~ build_type ~ ")");
    
    return JSONValue.init;
 }
@@ -1218,8 +1227,7 @@ string[] GetLanguageCommands(string file_path, string language_name, string buil
       }
       else
       {
-         writeln("Platform config missing commands for language ", language_name, "(", build_type, ")");
-         exit(-1);
+         ExitError("Platform config missing commands for language " ~ language_name ~ "(" ~ build_type ~ ")");
       }
    }
    
@@ -1256,8 +1264,7 @@ string[int][string] GetAvailablePlatforms(string file_path, string language)
 {
    if(!isFile(file_path))
    {
-      writeln(file_path ~ " not found!");
-      exit(-1);
+      ExitError(file_path ~ " not found!");
    }
    
    JSONValue file_json = LoadJSONFile(file_path);
@@ -1371,11 +1378,13 @@ Variable[] GetVariables(RoutineState state,
       }
       else
       {
-         writeln("Invalid variable declaration: ", var_decl);
-         exit(-1);
+         ExitError("Invalid variable declaration: " ~ var_decl);
       }
       
+      Array!string error_log = Array!string();
+      
       RoutineState access_state;
+      access_state.error_log = &error_log;
       access_state.routine_info = MakeRoutine(file_path, routine_name, state.routine_info.platform_config_path);
       access_state.build_info = GetBuildInfo(access_state, state.build_info.silent_build);
       access_state.version_info = GetVersionInfo(access_state, VersionType.None);
@@ -1539,6 +1548,21 @@ bool HandleConditional(RoutineState state,
       case "SILENT=":
       {
          return (value == to!string(state.build_info.silent_build));
+      }
+      
+      case "MAJORVERSION=":
+      {
+         return (to!string(state.version_info.type == VersionType.Major) == value);
+      }
+      
+      case "MINORVERSION=":
+      {
+         return (to!string(state.version_info.type == VersionType.Minor) == value);
+      }
+      
+      case "PATCHVERSION=":
+      {
+         return (to!string(state.version_info.type == VersionType.Patch) == value);
       }
       
       case "HASVAR=":
@@ -2045,6 +2069,10 @@ BuildTarget[] LoadBuildTargetsFromTag(RoutineState state,
                   if(supported_target.archs.canFind(arch_name))
                   {
                      target.archs[index++] = arch_name;
+                  }
+                  else
+                  {
+                     state.error_log.insert(arch_name ~ " on " ~ target.OS ~ " not supported");
                   }
                }
                

@@ -19,6 +19,11 @@ TO DO:
    
    -update .json.new file by checking file date of original
    
+BUGS:
+   -CopyItem cant copy entire folders
+   -LoadFileDescriptionsFromTag not loading multiple dependencies from a conditional
+   -
+   
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
    -Is setting the platform to the host for the regular operations the right thing to do?
@@ -172,7 +177,7 @@ void LaunchConfig(string default_platform_config_path,
       {
          writeln("----------------------------------------------------------");
          writeln("The config file has been updated without the \".new\" file");
-         writeln("This will eventually auto update the \".new\" File");
+         writeln("This will eventually auto update the \".new\" file");
          writeln("----------------------------------------------------------");
          can_version = false;
       }
@@ -269,7 +274,10 @@ void main(string[] args)
       return;
    }
    
-   const string default_platform_config_path = "./platform_config.json";
+   string exe_path = thisExePath();
+   string exe_dir = exe_path[0 .. max(exe_path.lastIndexOf("/"), exe_path.lastIndexOf("\\"))];
+   
+   const string default_platform_config_path = exe_dir ~ "/platform_config.json";
    string config_file_path = args[1];
    
    if(!exists(default_platform_config_path))

@@ -18,10 +18,9 @@ TO DO:
    -default platform configs
    
    -update .json.new file by checking file date of original
+   -ability to manipulate the temp directory in the per-operations
    
 BUGS:
-   -CopyItem cant copy entire folders
-   -LoadFileDescriptionsFromTag not loading multiple dependencies from a conditional
    -
    
 NOTES:
@@ -47,6 +46,18 @@ void ExitError(string msg)
    writeln("ERROR! stopping!");
    writeln(msg);
    exit(-1);
+}
+
+void Breakpoint(string text = "")
+{
+   try
+   {
+      throw new Exception("Breakpoint" ~ text);
+   }
+   catch(Exception e)
+   {
+      writeln(e.text);
+   }
 }
 
 enum VersionType : string
@@ -178,6 +189,7 @@ void LaunchConfig(string default_platform_config_path,
          writeln("----------------------------------------------------------");
          writeln("The config file has been updated without the \".new\" file");
          writeln("This will eventually auto update the \".new\" file");
+         writeln("Sync the files manually before you can use versioning again");
          writeln("----------------------------------------------------------");
          can_version = false;
       }
@@ -275,7 +287,7 @@ void main(string[] args)
    }
    
    string exe_path = thisExePath();
-   string exe_dir = exe_path[0 .. max(exe_path.lastIndexOf("/"), exe_path.lastIndexOf("\\"))];
+   string exe_dir = GetFileDirectory(exe_path);
    
    const string default_platform_config_path = exe_dir ~ "/platform_config.json";
    string config_file_path = args[1];
@@ -480,7 +492,10 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
    JSONValue file_json = LoadJSONFile(file_path);
    
    if(!HasJSON(file_json, routine_name))
+   {
+      writeln("Routine \"" ~ routine_name ~ "\" in " ~ file_path ~ " not found!");
       return;
+   }
    
    JSONValue routine_json = file_json[routine_name];
    
@@ -1772,6 +1787,16 @@ void InsertProcessedTags(Array!string *sarray,
    }
 }
 
+string GetFileDirectory(string file_path)
+{
+   return file_path[0 .. max(file_path.lastIndexOf("/"), file_path.lastIndexOf("\\"))];
+}
+
+string GetFileName(string file_path)
+{
+   return file_path[max(file_path.lastIndexOf("/"), file_path.lastIndexOf("\\")) + 1 .. $];
+}
+
 void LoadStringArrayFromTag_internal(RoutineState state,
                                      JSONValue json,
                                      Array!string *sarray,
@@ -1906,6 +1931,33 @@ CommandInformation[] LoadCommandsFromTag(RoutineState state,
    return null;
 }
 
+FileDescription MakeFileDesc(string[] tags)
+{
+   FileDescription fdesc;
+   
+   fdesc.path = tags[0];
+            
+   if(tags.length == 2)
+   {
+      if(IsValid!FileType(tags[0]))
+      {
+         fdesc.path = tags[1];
+         fdesc.type = to!FileType(tags[0]);
+      }
+      else
+      {
+         fdesc.ending = tags[1];
+      }
+   }  
+   else if(tags.length == 3)
+   {
+      fdesc.begining = tags[1];
+      fdesc.ending = tags[2];
+   }
+   
+   return fdesc;
+}
+
 FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
                                               JSONValue json)
 {
@@ -1922,6 +1974,16 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
          {
             fdesc.path = json_value.str();
          }
+         else if(json_value.type() == JSON_TYPE.ARRAY)
+         {
+            //TODO: loading multiple dependencies from a conditional
+            string[] strings = LoadStringArrayFromTag(state, json_value, TagType.String);
+            
+            if(strings == null)
+               continue;
+            
+            fdesc = MakeFileDesc(strings);
+         }
          else
          {
             string[] strings = LoadStringArrayFromTag(state, json_value, TagType.String);
@@ -1929,25 +1991,7 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
             if(strings == null)
                continue;
             
-            fdesc.path = strings[0];
-            
-            if(strings.length == 2)
-            {
-               if(IsValid!FileType(strings[0]))
-               {
-                  fdesc.path = strings[1];
-                  fdesc.type = to!FileType(strings[0]);
-               }
-               else
-               {
-                  fdesc.ending = strings[1];
-               }
-            }  
-            else if(strings.length == 3)
-            {
-               fdesc.begining = strings[1];
-               fdesc.ending = strings[2];
-            }
+            fdesc = MakeFileDesc(strings);
          }
          
          file_list.insert(fdesc);
@@ -2191,19 +2235,41 @@ bool GetJSONStringArray(RoutineState state, string var_name, JSONStringArray *re
    return false;
 }
 
-void CopyItem(string source, string destination)
+void CopyItem(string source, string dest)
 {
    try
    {
-      string dest_directory = destination[0 .. destination.lastIndexOf("/")];
-      
-      if(!exists(dest_directory))
-         mkdirRecurse(dest_directory);
-   
       if(exists(source))
-         copy(source, destination, PreserveAttributes.no);
-         
-   } catch {} 
+      {
+         if(isFile(source))
+         {
+            string dest_directory = GetFileDirectory(dest);
+            
+            if(!exists(dest_directory))   
+               mkdirRecurse(dest_directory);
+            
+            if(dest.endsWith("/") || dest.endsWith("\\"))
+            {
+               dest = dest ~ GetFileName(source);
+            }
+            
+            copy(source, dest, PreserveAttributes.no);
+         }
+         else if(isDir(source))
+         {
+            if(!exists(dest))   
+               mkdirRecurse(dest);
+               
+            foreach(DirEntry e; dirEntries(source, SpanMode.depth))
+            {
+               if(e.isFile())
+               {
+                  copy(e.name, dest ~ e.name().replace(source, ""));
+               }
+            }
+         }
+      }
+   } catch {}
 }
 
 void CopyMatchingItems_internal(string source, string destination, string begining, string ending, int depth)
@@ -2226,7 +2292,7 @@ void CopyMatchingItems_internal(string source, string destination, string begini
          {
             if(!exists(destination))
                mkdirRecurse(destination);
-               
+         
             CopyItem(e.name(), destination ~ e.name().replace(source, ""));
          }
       }
@@ -2246,8 +2312,16 @@ void DeleteItem(string path)
    try
    {
       if(exists(path))
-         remove(path);
-
+      {
+         if(isFile(path))
+         {
+            remove(path);
+         }
+         else if(isDir(path))
+         {
+            rmdirRecurse(path);
+         }
+      }
    } catch {} 
 }
 

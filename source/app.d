@@ -18,7 +18,6 @@ TO DO:
    -default platform configs
    
    -update .json.new file by checking file date of original
-   -ability to manipulate the temp directory in the per-operations
    
 BUGS:
    -
@@ -606,9 +605,13 @@ void ExecutePerOperations(string output_directory, RoutineState state)
    JSONValue routine_json = GetRoutineJSON(state.routine_info);
    string version_string = GetVersionString(state.version_info);
    
+   string temp_dir = state.routine_info.directory ~ state.build_info.project_name ~ "_" ~ state.routine_info.name ~ "_" ~ randomUUID().toString();
+   mkdirRecurse(temp_dir);
+   
    if(!HasJSON(routine_json, "per-operations"))
    {
-      Build(output_directory, state);
+      Build(output_directory, temp_dir, state);
+      rmdirRecurse(temp_dir);
       return;
    }
    
@@ -621,7 +624,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
       
       string[string] replace_additions;
       replace_additions["[OUTPUT_DIRECTORY]"] = output_directory;
-      WriteMsg(replace_additions["[OUTPUT_DIRECTORY]"]);
+      replace_additions["[BUILD_DIRECTORY]"] = temp_dir;
       
       CommandInformation[] commands = LoadCommandsFromTag(state, operations_json, replace_additions);
       
@@ -636,7 +639,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
       if(!specifies_build)
       {
          has_built = true;
-         Build(output_directory, state);
+         Build(output_directory, temp_dir, state);
       }
    
       string last_operation_token = "";
@@ -689,7 +692,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
                {
                   has_built = true;
                   WriteMsg("\tBuilding...");
-                  Build(output_directory, state);
+                  Build(output_directory, temp_dir, state);
                }
                else
                {
@@ -709,6 +712,8 @@ void ExecutePerOperations(string output_directory, RoutineState state)
          }
       }
    }
+   
+   rmdirRecurse(temp_dir);
 }
 
 void BuildOperation(RoutineState state)
@@ -1931,33 +1936,7 @@ CommandInformation[] LoadCommandsFromTag(RoutineState state,
    return null;
 }
 
-FileDescription MakeFileDesc(string[] tags)
-{
-   FileDescription fdesc;
-   
-   fdesc.path = tags[0];
-            
-   if(tags.length == 2)
-   {
-      if(IsValid!FileType(tags[0]))
-      {
-         fdesc.path = tags[1];
-         fdesc.type = to!FileType(tags[0]);
-      }
-      else
-      {
-         fdesc.ending = tags[1];
-      }
-   }  
-   else if(tags.length == 3)
-   {
-      fdesc.begining = tags[1];
-      fdesc.ending = tags[2];
-   }
-   
-   return fdesc;
-}
-
+//TODO: ability to load multiple file descriptions from a conditional
 FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
                                               JSONValue json)
 {
@@ -1974,16 +1953,6 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
          {
             fdesc.path = json_value.str();
          }
-         else if(json_value.type() == JSON_TYPE.ARRAY)
-         {
-            //TODO: loading multiple dependencies from a conditional
-            string[] strings = LoadStringArrayFromTag(state, json_value, TagType.String);
-            
-            if(strings == null)
-               continue;
-            
-            fdesc = MakeFileDesc(strings);
-         }
          else
          {
             string[] strings = LoadStringArrayFromTag(state, json_value, TagType.String);
@@ -1991,7 +1960,25 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
             if(strings == null)
                continue;
             
-            fdesc = MakeFileDesc(strings);
+            fdesc.path = strings[0];
+            
+            if(strings.length == 2)
+            {
+               if(IsValid!FileType(strings[0]))
+               {
+                  fdesc.path = strings[1];
+                  fdesc.type = to!FileType(strings[0]);
+               }
+               else
+               {
+                  fdesc.ending = strings[1];
+               }
+            }  
+            else if(strings.length == 3)
+            {
+               fdesc.begining = strings[1];
+               fdesc.ending = strings[2];
+            }
          }
          
          file_list.insert(fdesc);
@@ -2383,15 +2370,11 @@ bool IsValid(T)(string str)
    } catch(ConvException e) { return false; }
 }
 
-void Build(string output_folder, RoutineState state)
+void Build(string output_folder, string build_dir, RoutineState state)
 {
-   string temp_dir = state.routine_info.directory ~ state.build_info.project_name ~ "_" ~ state.routine_info.name ~ "_" ~ randomUUID().toString();
    string version_string = GetVersionString(state.version_info);
-                           
    string output_file_name = state.build_info.project_name ~ 
                              (state.version_info.is_versioned ? (state.version_info.breakS ~ version_string) : "");
-   
-   mkdirRecurse(temp_dir);
    
    if(!exists(PathF(output_folder, state.routine_info)))
    {
@@ -2413,16 +2396,16 @@ void Build(string output_folder, RoutineState state)
          {
             if((source.begining != "") || (source.ending != ""))
             {
-               CopyMatchingItems(PathF(source.path, state.routine_info), temp_dir ~ "/", source.begining, source.ending);
+               CopyMatchingItems(PathF(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending);
             }
             else
             {
-               CopyItem(PathF(source.path, state.routine_info), temp_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $]);
+               CopyItem(PathF(source.path, state.routine_info), build_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $]);
             }
          }
          else if(source.type == FileType.Remote)
          {
-            string dest_path = temp_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $];
+            string dest_path = build_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $];
             DownloadFile(source.path, dest_path);
          }
       }
@@ -2442,11 +2425,11 @@ void Build(string output_folder, RoutineState state)
                
                if((dep.begining != "") || (dep.ending != ""))
                {
-                  CopyMatchingItems(PathF(dep.path, state.routine_info), temp_dir ~ "/", dep.begining, dep.ending);
+                  CopyMatchingItems(PathF(dep.path, state.routine_info), build_dir ~ "/", dep.begining, dep.ending);
                }
                else
                {
-                  CopyItem(PathF(dep.path, state.routine_info), temp_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $]);
+                  CopyItem(PathF(dep.path, state.routine_info), build_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $]);
                }
             }
             else
@@ -2459,7 +2442,7 @@ void Build(string output_folder, RoutineState state)
          }
          else if(dep.type == FileType.Remote)
          {
-            string dest_path = temp_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $];
+            string dest_path = build_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $];
             DownloadFile(dep.path, dest_path);
          }
       }
@@ -2469,15 +2452,17 @@ void Build(string output_folder, RoutineState state)
    
    string command_batch = "";
    
-   string[] command_templates = LoadStringArrayFromTag(state,
-                                                       GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),
-                                                       TagType.String);
+   string[string] replace_additions;
+   replace_additions["[BUILD_DIRECTORY]"] = build_dir;
+   replace_additions["[DEPENDENCIES]"] = dependencies;
    
-   foreach(string command_template; command_templates)
-   {
-      string command = command_template.replace("[BUILD_DIRECTORY]", temp_dir)
-                                       .replace("[DEPENDENCIES]", dependencies);
+   string[] commands = LoadStringArrayFromTag(state,
+                                              GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),
+                                              TagType.String,
+                                              replace_additions);
    
+   foreach(string command; commands)
+   {                                   
       command_batch = command_batch ~ " && ( " ~ command ~ " )";
    }
    
@@ -2492,8 +2477,6 @@ void Build(string output_folder, RoutineState state)
    
    foreach(string file_ending; GetLanguageFileEndings(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type, state))
    {
-      CopyItem(temp_dir ~ "/" ~ state.build_info.project_name ~ file_ending, PathF(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
+      CopyItem(build_dir ~ "/" ~ state.build_info.project_name ~ file_ending, PathF(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
    }
-   
-   rmdirRecurse(temp_dir);
 }

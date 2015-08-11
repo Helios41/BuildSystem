@@ -18,7 +18,10 @@ TO DO:
    -default platform configs
    
    -update .json.new file by checking file date of original
+   -ability to load multiple file descriptions from a conditional
    
+   -file generation 
+   -file reading/file system querying
 BUGS:
    -
    
@@ -1936,7 +1939,6 @@ CommandInformation[] LoadCommandsFromTag(RoutineState state,
    return null;
 }
 
-//TODO: ability to load multiple file descriptions from a conditional
 FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
                                               JSONValue json)
 {

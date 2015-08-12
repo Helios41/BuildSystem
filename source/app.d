@@ -20,6 +20,8 @@ TO DO:
    -update .json.new file by checking file date of original
    -ability to load multiple file descriptions from a conditional
    
+   -ability to reference dependencies as a var
+   
    -file generation 
    -file reading/file system querying
 BUGS:
@@ -2402,7 +2404,19 @@ void Build(string output_folder, string build_dir, RoutineState state)
             }
             else
             {
-               CopyItem(PathF(source.path, state.routine_info), build_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $]);
+               string source_path = PathF(source.path, state.routine_info);
+               
+               if(exists(source_path))
+               {
+                  if(isFile(source_path))
+                  {
+                     CopyItem(source_path, build_dir ~ "/" ~ source.path[max(source.path.lastIndexOf("/"), source.path.lastIndexOf("\\")) + 1 .. $]);
+                  }
+                  else if(isDir(source_path))
+                  {
+                     CopyItem(source_path, build_dir ~ "/");
+                  }
+               }
             }
          }
          else if(source.type == FileType.Remote)
@@ -2431,7 +2445,19 @@ void Build(string output_folder, string build_dir, RoutineState state)
                }
                else
                {
-                  CopyItem(PathF(dep.path, state.routine_info), build_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $]);
+                  string dep_path = PathF(dep.path, state.routine_info);
+               
+                  if(exists(dep_path))
+                  {
+                     if(isFile(dep_path))
+                     {
+                        CopyItem(dep_path, build_dir ~ "/" ~ dep.path[max(dep.path.lastIndexOf("/"), dep.path.lastIndexOf("\\")) + 1 .. $]);
+                     }
+                     else if(isDir(dep_path))
+                     {
+                        CopyItem(dep_path, build_dir ~ "/");
+                     }
+                  }
                }
             }
             else

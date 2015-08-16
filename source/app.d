@@ -13,10 +13,6 @@ import std.datetime;
 
 /**
 TO DO:   
-   -Clean up code & comments
-   -documentation
-   -default platform configs
-   
    -ability to load multiple file descriptions from a conditional
    -ability to reference dependencies as a var
     
@@ -28,18 +24,22 @@ TO DO:
    -allow platform config to execute rebuild operations along with the regular cmd commands
    
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
-   -languages without multiple build types
+   -languages without multiple build types (default build type?)
    
    -stop using wildcard to detect files
    
+   -ability to specify source file extension
+   
 BUGS:
    -sources for C are including the header files 
+   -crash if the output dir is a file
    -
    
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
    -Is setting the platform to the host for the regular operations the right thing to do?
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
+   -["copy", "../example/Example.sol", "[OUTPUT_DIRECTORY]"] causes the output dir to become a file
 */
 
 const bool DEBUG_PRINTING = false;

@@ -8,6 +8,7 @@
             "Windows", ["X86_64", "X86"]
          ],
          "host": ["Windows", "X86_64"],
+         "source": [ ".c" ],
          "types":
          {
             "executable": 
@@ -84,6 +85,7 @@
       {
          "platforms": ["Windows", ["X86_64", "X86"]],
          "host": ["Windows", "X86_64"],
+         "source": [ ".d" ],
          "types":
          {
             "executable":
@@ -105,7 +107,7 @@
                      "then": 
                      [
                         "dmd2vars64",
-                        "dmd -m64 -of[PROJECT_NAME] [SOURCES]"
+                        "dmd -m64 -of[PROJECT_NAME].exe [SOURCES]"
                      ]
                   }
                ]

@@ -79,6 +79,23 @@
                ]
             }
          }
+      },
+      "D":
+      {
+         "platforms":
+         [
+            "Windows", ["X86"]
+         ],
+         "host": ["Windows", "X86"],
+         "executable":
+         {
+            "endings": ".exe",
+            "commands":
+            [
+               "cd [BUILD_DIRECTORY]",
+               "dmd *.d"
+            ]
+         }
       }
    }
 }

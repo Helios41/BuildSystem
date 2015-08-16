@@ -28,6 +28,13 @@ TO DO:
    
    -allow platform config to execute rebuild operations along with the regular cmd commands
    
+   -error messages (missing language, missing build type, non-existant files or directories, etc...)
+   -languages without multiple build types
+   
+   -report error if cant build
+   
+   -dmd doesnt accept wildcards, we need a way to pass the source file names to the platform commands
+   
 BUGS:
    -
    
@@ -538,6 +545,9 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
       state.routine_info = MakeRoutine(file_path, routine_name, default_platform_config_path);
       state.build_info = GetBuildInfo(state, silent_build);
       state.version_info = GetVersionInfo(state, version_type);
+      
+      //TODO: remove, this is for debugging
+      writeln(state.build_info.project_name, ": ", state.build_info.can_build);
       
       ExecuteOperations(state);
       

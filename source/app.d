@@ -19,23 +19,21 @@ TO DO:
    
    -ability to load multiple file descriptions from a conditional
    -ability to reference dependencies as a var
-   
-   -file generation 
-   -file reading/file system querying
+    
+   -file reading & file system querying
    
    -test on linux
    -cleanup forward vs. backward slashes (only use forward)
    
    -allow platform config to execute rebuild operations along with the regular cmd commands
    
-   -error messages (missing language, missing build type, non-existant files or directories, etc...)
+   -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
    -languages without multiple build types
    
-   -report error if cant build
-   
-   -dmd doesnt accept wildcards, we need a way to pass the source file names to the platform commands
+   -stop using wildcard to detect files
    
 BUGS:
+   -sources for C are including the header files 
    -
    
 NOTES:
@@ -482,36 +480,25 @@ VersionInfo GetVersionInfo(RoutineState state, VersionType version_type)
    {
       string regular_config_path = state.routine_info.path[0 .. $ - 4];
       string new_config_path = state.routine_info.path;
-      SysTime null_time;
       
-      SysTime regular_config;
-      getTimes(regular_config_path, null_time, regular_config);
+      WriteMsg("Syncing " ~ state.routine_info.name ~ " from \"" ~ regular_config_path ~ "\" to \"" ~ new_config_path ~ "\"");
       
-      SysTime new_config;
-      getTimes(new_config_path, null_time, new_config);
+      JSONValue regular_file_json = LoadJSONFile(regular_config_path);
+      JSONValue new_file_json = LoadJSONFile(new_config_path);
+      string routine_name = state.routine_info.name;
       
-      writeln("Candidate for sync");
+      new_file_json[routine_name] = regular_file_json[routine_name];
       
-      //TODO: finish this, it currently doesnt work
-      //this if statment below is never true
-      if(regular_config.stdTime() > new_config.stdTime())
+      new_file_json[routine_name]["version"][0] = version_info.major;
+      new_file_json[routine_name]["version"][1] = version_info.minor;
+      new_file_json[routine_name]["version"][2] = version_info.patch;
+      
+      if(version_info.appended != "")
       {
-         writeln("Syncing " ~ state.routine_info.name ~ " from \"" ~ regular_config_path ~ "\" to \"" ~ new_config_path ~ "\"");
-         
-         JSONValue file_json = LoadJSONFile(regular_config_path);
-         string routine_name = state.routine_info.name;
-         
-         file_json[routine_name]["version"][0] = version_info.major;
-         file_json[routine_name]["version"][1] = version_info.minor;
-         file_json[routine_name]["version"][2] = version_info.patch;
-         
-         if(version_info.appended != "")
-         {
-            file_json[routine_name]["version"][3] = version_info.appended;
-         }
-         
-         std.file.write(new_config_path, file_json.toPrettyString());
+         new_file_json[routine_name]["version"][3] = version_info.appended;
       }
+      
+      std.file.write(new_config_path, new_file_json.toPrettyString());
    }
    
    return *version_info;
@@ -546,15 +533,63 @@ void RunRoutine(string file_path, string routine_name, string default_platform_c
       state.build_info = GetBuildInfo(state, silent_build);
       state.version_info = GetVersionInfo(state, version_type);
       
-      //TODO: remove, this is for debugging
-      writeln(state.build_info.project_name, ": ", state.build_info.can_build);
-      
       ExecuteOperations(state);
       
       foreach(string error; error_log)
       {
          writeln("[" ~ state.build_info.project_name ~ "] " ~ error);
       }
+   }
+}
+
+void ExecuteOperation(string op_name, RoutineState state, string[] params, void delegate(RoutineState state)[string] extra_operations)
+{
+   switch(op_name)
+   {
+      case "move":
+         MoveOperation(state.routine_info, params);
+         break;
+      
+      case "delete":
+         DeleteOperation(state.routine_info, params);
+         break;
+      
+      case "copy":
+         CopyOperation(state.routine_info, params);
+         break;
+      
+      case "call":
+         CallOperation(state.routine_info, state.build_info, params);
+         break;
+      
+      case "cmd":
+         CommandOperation(state.routine_info, params);
+         break;
+      
+      case "replace":
+         ReplaceOperation(state.routine_info, params);
+         break;
+      
+      case "print":
+         PrintOperation(params);
+         break;
+      
+      case "fwrite":
+         FileWriteOperation(state.routine_info, params);
+         break;
+      
+      default:
+      {
+         if(extra_operations.keys.canFind(op_name))
+         {
+            extra_operations[op_name](state);
+         }
+         else
+         {
+            writeln("Unknown Operation: ", op_name);
+         }
+      }
+      break;
    }
 }
 
@@ -576,6 +611,14 @@ void ExecuteOperations(RoutineState state)
       bool has_built = false;
       CommandInformation[] commands = LoadCommandsFromTag(state, operations_json);
       
+      void delegate(RoutineState state)[string] extra_operations;
+      
+      extra_operations["build"] = delegate(RoutineState state)
+      {
+         BuildOperation(state);
+         has_built = true;
+      };
+      
       WriteMsg("Executing Commands:");
       
       foreach(CommandInformation command; commands)
@@ -592,48 +635,7 @@ void ExecuteOperations(RoutineState state)
             operation_token = last_operation_token;
          }
       
-         switch(operation_token)
-         {
-            case "move":
-               MoveOperation(state.routine_info, operation_params);
-               break;
-            
-            case "delete":
-               DeleteOperation(state.routine_info, operation_params);
-               break;
-            
-            case "copy":
-               CopyOperation(state.routine_info, operation_params);
-               break;
-            
-            case "call":
-               CallOperation(state.routine_info, state.build_info, operation_params);
-               break;
-            
-            case "cmd":
-               CommandOperation(state.routine_info, operation_params);
-               break;
-            
-            case "replace":
-               ReplaceOperation(state.routine_info, operation_params);
-               break;
-            
-            case "build":
-            {
-               BuildOperation(state);
-               has_built = true;
-            }
-            break;
-            
-            case "print":
-            {
-               PrintOperation(operation_params);
-            }
-            break;
-            
-            default:
-               writeln("Unknown Operation: ", operation_token);
-         }
+         ExecuteOperation(operation_token, state, operation_params, extra_operations);
       }
       
       if(!has_built)
@@ -684,7 +686,23 @@ void ExecutePerOperations(string output_directory, RoutineState state)
       }
    
       string last_operation_token = "";
-   
+      
+      void delegate(RoutineState state)[string] extra_operations;
+      
+      extra_operations["build"] = delegate(RoutineState state)
+      {
+         if(!has_built)
+         {
+            has_built = true;
+            WriteMsg("\tBuilding...");
+            Build(output_directory, temp_dir, state);
+         }
+         else
+         {
+            WriteMsg("Already built!");
+         }
+      };
+      
       WriteMsg("Executing Per Build Commands:");
       
       foreach(CommandInformation command; commands)
@@ -701,56 +719,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
             operation_token = last_operation_token;
          }
          
-         switch(operation_token)
-         {
-            case "move":
-               MoveOperation(state.routine_info, operation_params);
-               break;
-            
-            case "delete":
-               DeleteOperation(state.routine_info, operation_params);
-               break;
-            
-            case "copy":
-               CopyOperation(state.routine_info, operation_params);
-               break;
-            
-            case "call":
-               CallOperation(state.routine_info, state.build_info, operation_params);
-               break;
-            
-            case "cmd":
-               CommandOperation(state.routine_info, operation_params);
-               break;
-            
-            case "replace":
-               ReplaceOperation(state.routine_info, operation_params);
-               break;
-            
-            case "build":
-            {
-               if(!has_built)
-               {
-                  has_built = true;
-                  WriteMsg("\tBuilding...");
-                  Build(output_directory, temp_dir, state);
-               }
-               else
-               {
-                  WriteMsg("Already built!");
-               }
-            }
-            break;
-            
-            case "print":
-            {
-               PrintOperation(operation_params);
-            }
-            break;
-            
-            default:
-               writeln("Unknown Operation: ", operation_token);
-         }
+         ExecuteOperation(operation_token, state, operation_params, extra_operations);
       }
    }
    
@@ -1006,6 +975,50 @@ void PrintOperation(string[] params)
    }
    
    writeln("[print] ", to_print);
+}
+
+void FileWriteOperation(RoutineInfo routine_info, string[] params)
+{
+   if(params.length > 1)
+   {
+      string file_path = PathF(params[0], routine_info);
+      bool append = false;
+      string to_write = "";
+      
+      foreach(string param; params)
+      {
+         if(param.startsWith("-"))
+         {
+            switch(param)
+            {
+               case "-append":
+                  append = true;
+                  break;
+               
+               case "-overwrite":
+                  append = false;
+                  break;
+                  
+               default:
+                  to_write = to_write ~ param;
+            }
+         }
+         else
+         {
+            to_write = to_write ~ param;
+         }
+      }
+      
+      if(append && exists(file_path))
+      {
+         string file_contents = readText(file_path);
+         std.file.write(file_path, file_contents ~ to_write);
+      }
+      else
+      {
+         std.file.write(file_path, to_write);
+      }
+   }
 }
 
 string GetVersionString(VersionInfo version_info)
@@ -2257,7 +2270,7 @@ bool GetJSONStringArray(RoutineState state, string var_name, JSONStringArray *re
    return false;
 }
 
-void CopyItem(string source, string dest)
+string[] CopyItem(string source, string dest)
 {
    try
    {
@@ -2276,25 +2289,45 @@ void CopyItem(string source, string dest)
             }
             
             copy(source, dest, PreserveAttributes.no);
+            
+            string[] result = new string[1];
+            result[0] = dest;
+            
+            return result;
          }
          else if(isDir(source))
          {
             if(!exists(dest))   
                mkdirRecurse(dest);
                
+            Array!string result_list = Array!string();
+               
             foreach(DirEntry e; dirEntries(source, SpanMode.depth))
             {
                if(e.isFile())
                {
                   copy(e.name, dest ~ e.name().replace(source, ""));
+                  result_list.insert(dest ~ e.name().replace(source, ""));
                }
             }
+            
+            string[] result = new string[result_list.length];
+            int i = 0;
+            
+            foreach(string str; result_list)
+            {
+               result[i++] = str;
+            }
+            
+            return result;
          }
       }
    } catch {}
+   
+   return new string[0];
 }
 
-void CopyMatchingItems_internal(string source, string destination, string begining, string ending, int depth)
+void CopyMatchingItems_internal(string source, string destination, string begining, string ending, int depth, Array!string *result)
 {
    if(isDir(source))
    {
@@ -2307,7 +2340,7 @@ void CopyMatchingItems_internal(string source, string destination, string begini
          
          if(e.isDir() && ((depth - 1) >= 0))
          {
-            CopyMatchingItems_internal(e.name(), destination ~ e.name().replace(source, ""), begining, ending, depth - 1);
+            CopyMatchingItems_internal(e.name(), destination ~ e.name().replace(source, ""), begining, ending, depth - 1, result);
          }
          
          if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
@@ -2315,18 +2348,31 @@ void CopyMatchingItems_internal(string source, string destination, string begini
             if(!exists(destination))
                mkdirRecurse(destination);
          
-            CopyItem(e.name(), destination ~ e.name().replace(source, ""));
+            string[] copied_items = CopyItem(e.name(), destination ~ e.name().replace(source, ""));
+            
+            foreach(string copied_item; copied_items)
+               result.insert(copied_item);
          }
       }
    }
 }
 
-void CopyMatchingItems(string source, string destination, string begining = "", string ending = "", int depth = 0)
+string[] CopyMatchingItems(string source, string destination, string begining = "", string ending = "", int depth = 0)
 {
+   Array!string result_list = Array!string();
+   
    try
    {
-      CopyMatchingItems_internal(source, destination, begining, ending, depth);
+      CopyMatchingItems_internal(source, destination, begining, ending, depth, &result_list);
    } catch {}
+   
+   string[] result = new string[result_list.length];
+   int i = 0;
+   
+   foreach(string str; result_list)
+      result[i++] = str;
+   
+   return result;
 }
 
 void DeleteItem(string path)
@@ -2417,6 +2463,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
    }
    
    JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   string sources = "";
    string dependencies = "";
    
    if(HasJSON(routine_json, "source"))
@@ -2429,9 +2476,11 @@ void Build(string output_folder, string build_dir, RoutineState state)
          
          if(source.type == FileType.Local)
          {
+            string[] src_files = null;
+            
             if((source.begining != "") || (source.ending != ""))
             {
-               CopyMatchingItems(PathF(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending);
+               src_files = CopyMatchingItems(PathF(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending);               
             }
             else
             {
@@ -2441,19 +2490,27 @@ void Build(string output_folder, string build_dir, RoutineState state)
                {
                   if(isFile(source_path))
                   {
-                     CopyItem(source_path, build_dir ~ "/" ~ source.path[max(source.path.lastIndexOf("/"), source.path.lastIndexOf("\\")) + 1 .. $]);
+                     src_files = CopyItem(source_path, build_dir ~ "/" ~ source.path[max(source.path.lastIndexOf("/"), source.path.lastIndexOf("\\")) + 1 .. $]);
                   }
                   else if(isDir(source_path))
                   {
-                     CopyItem(source_path, build_dir ~ "/");
+                     src_files = CopyItem(source_path, build_dir ~ "/");
                   }
                }
+            }
+            
+            if(src_files != null)
+            {
+               foreach(string src; src_files)
+                  sources = sources ~ " " ~ src.replace(build_dir ~ "/", "");
             }
          }
          else if(source.type == FileType.Remote)
          {
             string dest_path = build_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $];
             DownloadFile(source.path, dest_path);
+            
+            sources = sources ~ " " ~  dest_path.replace(build_dir ~ "/", "");
          }
       }
    }
@@ -2466,29 +2523,33 @@ void Build(string output_folder, string build_dir, RoutineState state)
       {
          if(dep.type == FileType.Local)
          {
-            if(exists(PathF(dep.path, state.routine_info)))
+            string dep_path = PathF(dep.path, state.routine_info);
+            
+            if(exists(dep_path))
             {
                WriteMsg("FDep " ~ PathF(dep.path, state.routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
-               
+               string[] dep_files = null;
+             
                if((dep.begining != "") || (dep.ending != ""))
                {
-                  CopyMatchingItems(PathF(dep.path, state.routine_info), build_dir ~ "/", dep.begining, dep.ending);
+                  dep_files = CopyMatchingItems(PathF(dep.path, state.routine_info), build_dir ~ "/", dep.begining, dep.ending);
                }
                else
                {
-                  string dep_path = PathF(dep.path, state.routine_info);
-               
-                  if(exists(dep_path))
+                  if(isFile(dep_path))
                   {
-                     if(isFile(dep_path))
-                     {
-                        CopyItem(dep_path, build_dir ~ "/" ~ dep.path[max(dep.path.lastIndexOf("/"), dep.path.lastIndexOf("\\")) + 1 .. $]);
-                     }
-                     else if(isDir(dep_path))
-                     {
-                        CopyItem(dep_path, build_dir ~ "/");
-                     }
+                     dep_files = CopyItem(dep_path, build_dir ~ "/" ~ dep.path[max(dep.path.lastIndexOf("/"), dep.path.lastIndexOf("\\")) + 1 .. $]);
                   }
+                  else if(isDir(dep_path))
+                  {
+                     dep_files = CopyItem(dep_path, build_dir ~ "/");
+                  }
+               }
+               
+               if(dep_files != null)
+               {
+                  foreach(string dep_file; dep_files)
+                     dependencies = dependencies ~ " " ~ dep_file.replace(build_dir ~ "/", "");
                }
             }
             else
@@ -2503,6 +2564,8 @@ void Build(string output_folder, string build_dir, RoutineState state)
          {
             string dest_path = build_dir ~ "/" ~ dep.path[dep.path.lastIndexOf("/") + 1 .. $];
             DownloadFile(dep.path, dest_path);
+            
+            dependencies = dependencies ~ " " ~ dest_path.replace(build_dir ~ "/", "");
          }
       }
    }
@@ -2511,8 +2574,48 @@ void Build(string output_folder, string build_dir, RoutineState state)
    
    string command_batch = "";
    
+   {
+      int first_letter = 0;
+      
+      for(int i = 0; i < sources.length; ++i)
+      {
+         if(sources[i] == ' ')
+         {
+            first_letter++;
+         }
+         else
+         {
+            break;
+         }
+      }
+      
+      sources = sources[first_letter .. $];
+   }
+   
+   {
+      int first_letter = 0;
+      
+      for(int i = 0; i < dependencies.length; ++i)
+      {
+         if(dependencies[i] == ' ')
+         {
+            first_letter++;
+         }
+         else
+         {
+            break;
+         }
+      }
+      
+      dependencies = dependencies[first_letter .. $];
+   }
+   
+   WriteMsg("S|", sources, "|");
+   WriteMsg("D|", dependencies, "|");
+   
    string[string] replace_additions;
    replace_additions["[BUILD_DIRECTORY]"] = build_dir;
+   replace_additions["[SOURCES]"] = sources;
    replace_additions["[DEPENDENCIES]"] = dependencies;
    
    string[] commands = LoadStringArrayFromTag(state,

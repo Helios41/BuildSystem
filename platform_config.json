@@ -26,8 +26,8 @@
                   },
                   {
                      "if": "OPT=true",
-                     "then": "cl /O2 /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]",
-                     "else": "cl /Od /Fe[PROJECT_NAME] *.c /link *.lib [DEPENDENCIES]"
+                     "then": "cl /O2 /Fe[PROJECT_NAME] *.c /link [DEPENDENCIES]",
+                     "else": "cl /Od /Fe[PROJECT_NAME] *.c /link [DEPENDENCIES]"
                   }
                ]
             },
@@ -53,7 +53,7 @@
                      "then": "cl /O2 /c *.c",
                      "else": "cl /Od /c *.c"
                   },
-                  "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj *.lib [DEPENDENCIES]"
+                  "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj [DEPENDENCIES]"
                ]
             },
             "static": 
@@ -82,19 +82,34 @@
       },
       "D":
       {
-         "platforms":
-         [
-            "Windows", ["X86"]
-         ],
-         "host": ["Windows", "X86"],
-         "executable":
+         "platforms": ["Windows", ["X86_64", "X86"]],
+         "host": ["Windows", "X86_64"],
+         "types":
          {
-            "endings": ".exe",
-            "commands":
-            [
-               "cd [BUILD_DIRECTORY]",
-               "dmd *.d"
-            ]
+            "executable":
+            {
+               "endings": ".exe",
+               "commands":
+               [
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "ARCH=X86",
+                     "then": 
+                     [
+                        "dmd2vars32",
+                        "dmd -of[PROJECT_NAME] [SOURCES]"
+                     ]
+                  },
+                  {
+                     "if": "ARCH=X86_64",
+                     "then": 
+                     [
+                        "dmd2vars64",
+                        "dmd -m64 -of[PROJECT_NAME] [SOURCES]"
+                     ]
+                  }
+               ]
+            }
          }
       }
    }

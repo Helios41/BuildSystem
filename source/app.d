@@ -17,13 +17,16 @@ TO DO:
    -documentation
    -default platform configs
    
-   -update .json.new file by checking file date of original
    -ability to load multiple file descriptions from a conditional
    
    -ability to reference dependencies as a var
    
    -file generation 
    -file reading/file system querying
+   
+   -test on linux
+   -cleanup forward vs. backward slashes (only use forward)
+   
 BUGS:
    -
    
@@ -443,42 +446,66 @@ VersionInfo GetVersionInfo(RoutineState state, VersionType version_type)
          {
             if(version_json[0].type() == JSON_TYPE.INTEGER)
             {
-               state.version_info.major = to!int(version_json[0].integer);
+               version_info.major = to!int(version_json[0].integer);
             }
             
             if(version_json[1].type() == JSON_TYPE.INTEGER)
             {
-               state.version_info.minor = to!int(version_json[1].integer);
+               version_info.minor = to!int(version_json[1].integer);
             }
             
             if(version_json[2].type() == JSON_TYPE.INTEGER)
             {
-               state.version_info.patch = to!int(version_json[2].integer);
+               version_info.patch = to!int(version_json[2].integer);
             }
          }
          else
          {
-            state.version_info.is_versioned = false;
+            version_info.is_versioned = false;
          }
          
          if(version_json.array.length == 4)
          {   
             if(version_json[3].type() == JSON_TYPE.STRING)
             {
-               state.version_info.appended = version_json[3].str();
+               version_info.appended = version_json[3].str();
             }
          }
       }
    }
    else
    {
-      state.version_info.is_versioned = false;
+      version_info.is_versioned = false;
    }
    
    JSONString version_break;
    if(GetJSONString(state, "version_break", &version_break))
    {
       version_info.breakS = version_break.get();
+   }
+   
+   if(version_info.is_versioned)
+   {
+      *version_info = UpdateVersions(state.routine_info, *version_info); 
+   }
+   
+   if(version_info.is_versioned && (state.routine_info.path.endsWith(".new")))
+   {
+      string regular_config_path = state.routine_info.path[0 .. $ - 4];
+      string new_config_path = state.routine_info.path;
+      SysTime null_time;
+      
+      SysTime regular_config;
+      getTimes(regular_config_path, null_time, regular_config);
+      
+      SysTime new_config;
+      getTimes(new_config_path, null_time, new_config);
+      
+      if(regular_config.stdTime() > new_config.stdTime())
+      {
+         writeln("Syncing " ~ state.routine_info.name ~ " from \"" ~ regular_config_path ~ "\" to \"" ~ new_config_path ~ "\"");
+         //TODO: sync routines between files
+      }
    }
    
    return *version_info;
@@ -726,11 +753,6 @@ void BuildOperation(RoutineState state)
    if(state.build_info.can_build)
    {
       VersionInfo version_info = state.version_info;
-   
-      if(version_info.is_versioned)
-      {
-         version_info = UpdateVersions(state.routine_info, state.version_info); 
-      }
       
       foreach(BuildTarget target; state.build_info.targets)
       {

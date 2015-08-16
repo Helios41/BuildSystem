@@ -18,7 +18,6 @@ TO DO:
    -default platform configs
    
    -ability to load multiple file descriptions from a conditional
-   
    -ability to reference dependencies as a var
    
    -file generation 
@@ -26,6 +25,8 @@ TO DO:
    
    -test on linux
    -cleanup forward vs. backward slashes (only use forward)
+   
+   -allow platform config to execute rebuild operations along with the regular cmd commands
    
 BUGS:
    -
@@ -180,26 +181,7 @@ void LaunchConfig(string default_platform_config_path,
 
    if(exists(config_file_path ~ ".new"))
    {
-      string regular_config_path = config_file_path;
       config_file_path = config_file_path ~ ".new";
-      
-      SysTime null_time;
-      
-      SysTime regular_config;
-      getTimes(regular_config_path, null_time, regular_config);
-      
-      SysTime new_config;
-      getTimes(config_file_path, null_time, new_config);
-      
-      if(regular_config.stdTime() > new_config.stdTime())
-      {
-         writeln("----------------------------------------------------------");
-         writeln("The config file has been updated without the \".new\" file");
-         writeln("This will eventually auto update the \".new\" file");
-         writeln("Sync the files manually before you can use versioning again");
-         writeln("----------------------------------------------------------");
-         can_version = false;
-      }
    }
 
    bool function_called = false;
@@ -501,10 +483,27 @@ VersionInfo GetVersionInfo(RoutineState state, VersionType version_type)
       SysTime new_config;
       getTimes(new_config_path, null_time, new_config);
       
+      writeln("Candidate for sync");
+      
+      //TODO: finish this, it currently doesnt work
+      //this if statment below is never true
       if(regular_config.stdTime() > new_config.stdTime())
       {
          writeln("Syncing " ~ state.routine_info.name ~ " from \"" ~ regular_config_path ~ "\" to \"" ~ new_config_path ~ "\"");
-         //TODO: sync routines between files
+         
+         JSONValue file_json = LoadJSONFile(regular_config_path);
+         string routine_name = state.routine_info.name;
+         
+         file_json[routine_name]["version"][0] = version_info.major;
+         file_json[routine_name]["version"][1] = version_info.minor;
+         file_json[routine_name]["version"][2] = version_info.patch;
+         
+         if(version_info.appended != "")
+         {
+            file_json[routine_name]["version"][3] = version_info.appended;
+         }
+         
+         std.file.write(new_config_path, file_json.toPrettyString());
       }
    }
    

@@ -24,14 +24,12 @@ TO DO:
    -allow platform config to execute rebuild operations along with the regular cmd commands
    
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
-   -languages without multiple build types (default build type?)
    
-   -stop using wildcard to detect files
+   -ability to store platform configs for languages in different files and reference them from the main one
    
-   -ability to specify source file extension
+   -tool to link languages to platform config
    
 BUGS:
-   -sources for C are including the header files 
    -crash if the output dir is a file
    -
    
@@ -139,6 +137,7 @@ struct BuildInfo
    string project_name;
    bool silent_build;
    BuildTarget[] targets;
+   string[] outputs;
 }
 
 struct RoutineInfo
@@ -305,6 +304,7 @@ string GetDefaultRoutine(string file_path)
       ExitError(file_path ~ " not found!");
    }
 
+   //TODO: rework
    JSONValue file_json = LoadJSONFile(file_path);
    
    if(HasJSON(file_json, "default"))
@@ -366,7 +366,17 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    }
    else
    {
-      build_info.can_build = false;
+      //TODO: default type
+      /*
+      if(HasDefaultType(state.routine_info.platform_config_path, build_info.language, state))
+      {
+         build_info.type = GetDefaultType(state.routine_info.platform_config_path, build_info.language, state);
+      }
+      else
+      */
+      {
+         build_info.can_build = false;
+      }
    }
    
    JSONString build;
@@ -1158,6 +1168,14 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
       }
    }
    
+   if(HasJSON(file_json, "links"))
+   {
+      JSONValue links_json = file_json["links"];
+      
+      //TODO: runtime linking against other platform configs
+      //string[] linked_configs = LoadStringArrayFromTag(state, links_json, TagType.StringArray);
+   }
+   
    ExitError("Platform config missing for language \"" ~ language_name ~ "\"");
    
    return JSONValue.init; 
@@ -1167,33 +1185,23 @@ PlatformInfo GetHostInfo(string file_path, string language)
 {
    WriteMsg("Get Host");
    
-   JSONValue file_json = LoadJSONFile(file_path);
-   
-   if(HasJSON(file_json, "languages"))
-   {
-      JSONValue languages_json = file_json["languages"];
-      
-      if(HasJSON(languages_json, language))
-      {
-         JSONValue language_json = languages_json[language];
+   JSONValue language_json = GetLanguageJSON(file_path, language);
          
-         if(HasJSON(language_json, "host"))
+   if(HasJSON(language_json, "host"))
+   {
+      JSONValue host_json = language_json["host"];
+      
+      if(host_json.type() == JSON_TYPE.ARRAY)
+      {
+         if(host_json.array.length == 2)
          {
-            JSONValue host_json = language_json["host"];
-            
-            if(host_json.type() == JSON_TYPE.ARRAY)
+            if((host_json[0].type() == JSON_TYPE.STRING) &&
+               (host_json[1].type() == JSON_TYPE.STRING))
             {
-               if(host_json.array.length == 2)
-               {
-                  if((host_json[0].type() == JSON_TYPE.STRING) &&
-                     (host_json[1].type() == JSON_TYPE.STRING))
-                  {
-                     PlatformInfo info;
-                     info.OS = host_json[0].str();
-                     info.arch = host_json[1].str();
-                     return info;
-                  }
-               }
+               PlatformInfo info;
+               info.OS = host_json[0].str();
+               info.arch = host_json[1].str();
+               return info;
             }
          }
       }
@@ -1208,42 +1216,13 @@ BuildTarget GetHost(string file_path, string language)
 {
    WriteMsg("Get Host");
    
-   JSONValue file_json = LoadJSONFile(file_path);
+   PlatformInfo host_info = GetHostInfo(file_path, language);
    
-   if(HasJSON(file_json, "languages"))
-   {
-      JSONValue languages_json = file_json["languages"];
-      
-      if(HasJSON(languages_json, language))
-      {
-         JSONValue language_json = languages_json[language];
-         
-         if(HasJSON(language_json, "host"))
-         {
-            JSONValue host_json = language_json["host"];
-            
-            if(host_json.type() == JSON_TYPE.ARRAY)
-            {
-               if(host_json.array.length == 2)
-               {
-                  if((host_json[0].type() == JSON_TYPE.STRING) &&
-                     (host_json[1].type() == JSON_TYPE.STRING))
-                  {
-                     BuildTarget target;
-                     target.OS = host_json[0].str();
-                     target.archs = new string[1];
-                     target.archs[0] = host_json[1].str();
-                     return target;
-                  }
-               }
-            }
-         }
-      }
-   }
-   
-   ExitError("Platform config missing host");
-
-   return BuildTarget.init;
+   BuildTarget host_target;
+   host_target.OS = host_info.OS;
+   host_target.archs = new string[1];
+   host_target.archs[0] = host_info.arch;
+   return host_target;
 }
 
 JSONValue GetLanguageCommandTag(string file_path, string language_name, string build_type)
@@ -1337,6 +1316,23 @@ string[] GetLanguageFileEndings(string file_path, string language_name, string b
    return null;
 }
 
+string[] GetLanguageSourceFileEndings(string file_path, string language_name, RoutineState state)
+{
+   WriteMsg("Loading language ", language_name, " source file ending from ", file_path);
+   
+   JSONValue language_json = GetLanguageJSON(file_path, language_name);
+   
+   if(HasJSON(language_json, "sources"))
+   {
+      JSONValue sources_json = language_json["sources"];
+      
+      string[] source_endings = LoadStringArrayFromTag(state, sources_json, TagType.StringArray);
+      return source_endings;
+   }
+
+   return null;
+}
+
 string[int][string] GetAvailablePlatforms(string file_path, string language)
 {
    if(!isFile(file_path))
@@ -1344,45 +1340,34 @@ string[int][string] GetAvailablePlatforms(string file_path, string language)
       ExitError(file_path ~ " not found!");
    }
    
-   JSONValue file_json = LoadJSONFile(file_path);
-   
+   JSONValue language_json = GetLanguageJSON(file_path, language);
    string[int][string] platforms;
    
-   if(HasJSON(file_json, "languages"))
+   if(HasJSON(language_json, "platforms"))
    {
-      JSONValue languages_json = file_json["languages"];
+      JSONValue platforms_json = language_json["platforms"];
       
-      if(HasJSON(languages_json, language))
+      if(platforms_json.type() == JSON_TYPE.ARRAY)
       {
-         JSONValue language_json = languages_json[language];
+         string current_platform = "";
          
-         if(HasJSON(language_json, "platforms"))
+         foreach(JSONValue platform_json; platforms_json.array)
          {
-            JSONValue platforms_json = language_json["platforms"];
-            
-            if(platforms_json.type() == JSON_TYPE.ARRAY)
+            if(platform_json.type() == JSON_TYPE.STRING)
             {
-               string current_platform = "";
+               current_platform = platform_json.str();
+            }
+            else if(platform_json.type() == JSON_TYPE.ARRAY)
+            {
+               int index = 0;
                
-               foreach(JSONValue platform_json; platforms_json.array)
+               foreach(JSONValue arch_json; platform_json.array)
                {
-                  if(platform_json.type() == JSON_TYPE.STRING)
-                  {
-                     current_platform = platform_json.str();
-                  }
-                  else if(platform_json.type() == JSON_TYPE.ARRAY)
-                  {
-                     int index = 0;
-                     
-                     foreach(JSONValue arch_json; platform_json.array)
-                     {
-                        if(arch_json.type() == JSON_TYPE.STRING)
-                           platforms[current_platform][index++] = arch_json.str();
-                     }
-                     
-                     current_platform = "";
-                  }
+                  if(arch_json.type() == JSON_TYPE.STRING)
+                     platforms[current_platform][index++] = arch_json.str();
                }
+               
+               current_platform = "";
             }
          }
       }
@@ -1520,6 +1505,7 @@ RoutineInfo MakeRoutine(string file_path,
    
    if(can_specify_platform_config)
    {
+      //TODO: GetRoutineJSON
       JSONValue file_json = LoadJSONFile(file_path);
       
       if(HasJSON(file_json, routine_name))
@@ -2463,6 +2449,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
    }
    
    JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   string[] source_file_endings = GetLanguageSourceFileEndings(state.routine_info.platform_config_path, state.build_info.language, state);
    string sources = "";
    string dependencies = "";
    
@@ -2502,7 +2489,18 @@ void Build(string output_folder, string build_dir, RoutineState state)
             if(src_files != null)
             {
                foreach(string src; src_files)
-                  sources = sources ~ " " ~ src.replace(build_dir ~ "/", "");
+               {
+                  string source_path = src.replace(build_dir ~ "/", "");
+               
+                  foreach(string ending; source_file_endings)
+                  {
+                     if(source_path.endsWith(ending))
+                     {
+                        sources = sources ~ " " ~ source_path;
+                        break;
+                     }
+                  }
+               }
             }
          }
          else if(source.type == FileType.Remote)
@@ -2510,7 +2508,16 @@ void Build(string output_folder, string build_dir, RoutineState state)
             string dest_path = build_dir ~ "/" ~ source.path[source.path.lastIndexOf("/") + 1 .. $];
             DownloadFile(source.path, dest_path);
             
-            sources = sources ~ " " ~  dest_path.replace(build_dir ~ "/", "");
+            string source_path = dest_path.replace(build_dir ~ "/", "");
+            
+            foreach(string ending; source_file_endings)
+            {
+               if(source_path.endsWith(ending))
+               {
+                  sources = sources ~ " " ~ source_path;
+                  break;
+               }
+            }
          }
       }
    }
@@ -2639,6 +2646,10 @@ void Build(string output_folder, string build_dir, RoutineState state)
    
    foreach(string file_ending; GetLanguageFileEndings(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type, state))
    {
-      CopyItem(build_dir ~ "/" ~ state.build_info.project_name ~ file_ending, PathF(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
+      //TODO: allow specification of build outputs
+      //if(state.build_info.outputs.canFind(file_ending))
+      {
+         CopyItem(build_dir ~ "/" ~ state.build_info.project_name ~ file_ending, PathF(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
+      }
    }
 }

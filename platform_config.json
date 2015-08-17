@@ -8,7 +8,7 @@
             "Windows", ["X86_64", "X86"]
          ],
          "host": ["Windows", "X86_64"],
-         "source": [ ".c" ],
+         "sources": [ ".c" ],
          "types":
          {
             "executable": 
@@ -27,8 +27,8 @@
                   },
                   {
                      "if": "OPT=true",
-                     "then": "cl /O2 /Fe[PROJECT_NAME] *.c /link [DEPENDENCIES]",
-                     "else": "cl /Od /Fe[PROJECT_NAME] *.c /link [DEPENDENCIES]"
+                     "then": "cl /O2 /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
+                     "else": "cl /Od /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
                   }
                ]
             },
@@ -51,10 +51,9 @@
                   "(for %a in ([VAR exports]) do ( echo \t %a >> ./exports.def )) 1> nul",
                   {
                      "if": "OPT=true",
-                     "then": "cl /O2 /c *.c",
-                     "else": "cl /Od /c *.c"
-                  },
-                  "link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def *.obj [DEPENDENCIES]"
+                     "then": "cl /O2 [SOURCES] /link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def [DEPENDENCIES]",
+                     "else": "cl /Od [SOURCES] /link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def [DEPENDENCIES]"
+                  }
                ]
             },
             "static": 
@@ -73,8 +72,8 @@
                   },
                   {
                      "if": "OPT=true",
-                     "then": "cl /O2 /c *.c",
-                     "else": "cl /Od /c *.c"
+                     "then": "cl /O2 /c [SOURCES]",
+                     "else": "cl /Od /c [SOURCES]"
                   },
                   "lib /out:[PROJECT_NAME].lib *.obj"
                ]
@@ -85,7 +84,7 @@
       {
          "platforms": ["Windows", ["X86_64", "X86"]],
          "host": ["Windows", "X86_64"],
-         "source": [ ".d" ],
+         "sources": [ ".d" ],
          "types":
          {
             "executable":

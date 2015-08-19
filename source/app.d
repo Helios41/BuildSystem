@@ -2453,6 +2453,11 @@ void CopyMatchingItems_internal(string source, string destination, string begini
    source = source.replace("\\", "/");
    destination = destination.replace("\\", "/");
 
+   if(!destination.endsWith("/"))
+   {
+      destination = destination ~ "/";
+   }
+   
    if(isDir(source))
    {
       foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
@@ -2473,16 +2478,6 @@ void CopyMatchingItems_internal(string source, string destination, string begini
                mkdirRecurse(destination);
          
             string rsource = source ~ (source.endsWith("/") ? "" : "/");
-            
-            //TODO: fix, nested files are broken
-            //this is broken 
-            //it seems destination requires a '/' at the end
-            //destination ~ e.name().replace("\\", "/").replace(rsource, "")
-            
-            writeln(destination, "|", e.name().replace("\\", "/"), "|", rsource);
-            
-            writeln(destination ~ e.name().replace("\\", "/").replace(rsource, ""));
-            
             string[] copied_items = CopyItem(e.name().replace("\\", "/"), destination ~ e.name().replace("\\", "/").replace(rsource, ""));
             
             foreach(string copied_item; copied_items)

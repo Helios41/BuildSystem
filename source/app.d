@@ -61,7 +61,7 @@ void Breakpoint(string text = "")
 {
    try
    {
-      throw new Exception("Breakpoint" ~ text);
+      throw new Exception("Breakpoint" ~ ((text != "") ? (": " ~ text) : ""));
    }
    catch(Exception e)
    {
@@ -418,7 +418,7 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    }
    else
    {
-      if(HasDefaultType(state.routine_info.platform_config_path, build_info.language))
+      if(build_info.can_build && HasDefaultType(state.routine_info.platform_config_path, build_info.language))
       {
          build_info.type = GetDefaultType(state.routine_info.platform_config_path, build_info.language, state);
       }
@@ -468,7 +468,14 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    }
    else
    {
-      build_info.outputs = GetLanguageFileEndings(state.routine_info.platform_config_path, build_info.language, build_info.type, state);
+      if(build_info.can_build)
+      {
+         build_info.outputs = GetLanguageFileEndings(state.routine_info.platform_config_path, build_info.language, build_info.type, state);
+      }
+      else
+      {
+         build_info.outputs = null;
+      }
    }
    
    if(!build_info.can_build)
@@ -640,7 +647,7 @@ void ExecuteOperation(string op_name, RoutineState state, string[] params, void 
          break;
       
       case "print":
-         PrintOperation(params);
+         PrintOperation(params, state.routine_info.name);
          break;
       
       case "fwrite":
@@ -996,7 +1003,7 @@ void ReplaceOperation(RoutineInfo routine_info, string[] params)
    }
 }
 
-void PrintOperation(string[] params)
+void PrintOperation(string[] params, string routine_name)
 {
    string to_print = "";
    string separator = "";
@@ -1043,7 +1050,7 @@ void PrintOperation(string[] params)
       to_print = to_print[separator.length .. $];
    }
    
-   writeln("[print] ", to_print);
+   writeln("[print: " ~ routine_name ~ "] ", to_print);
 }
 
 void FileWriteOperation(RoutineInfo routine_info, string[] params)
@@ -1248,10 +1255,17 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
          
          foreach(string linked_config; linked_configs)
          {
-            //TODO: clean this up
-            //it currently relies on the fact that the path is 
-            //like this "dir/config.json" or "config.json" 
-            //but "/config.json" will break
+            linked_config = linked_config.replace("\\", "/");
+         
+            if(linked_config.startsWith("./"))
+            {
+               linked_config = linked_config[2 .. $];
+            }
+            else if(linked_config.startsWith("/"))
+            {
+               linked_config = linked_config[1 .. $];
+            }
+            
             JSONValue linked_config_json = LoadJSONFile(exe_dir ~ "/" ~ linked_config);
             
             if(HasJSON(linked_config_json, "languages"))
@@ -2434,7 +2448,6 @@ string[] CopyItem(string source, string dest)
    return new string[0];
 }
 
-//TODO: fix this, coping into nested folders not working!
 void CopyMatchingItems_internal(string source, string destination, string begining, string ending, int depth, Array!string *result)
 {
    source = source.replace("\\", "/");
@@ -2451,8 +2464,7 @@ void CopyMatchingItems_internal(string source, string destination, string begini
          
          if(e.isDir() && ((depth - 1) >= 0))
          {
-            //the bug is around here i think
-            CopyMatchingItems_internal(e.name(), destination ~ e.name().replace(source, ""), begining, ending, depth - 1, result);
+            CopyMatchingItems_internal(e.name().replace("\\", "/"), destination ~ e.name().replace("\\", "/").replace(source, ""), begining, ending, depth - 1, result);
          }
          
          if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
@@ -2461,6 +2473,16 @@ void CopyMatchingItems_internal(string source, string destination, string begini
                mkdirRecurse(destination);
          
             string rsource = source ~ (source.endsWith("/") ? "" : "/");
+            
+            //TODO: fix, nested files are broken
+            //this is broken 
+            //it seems destination requires a '/' at the end
+            //destination ~ e.name().replace("\\", "/").replace(rsource, "")
+            
+            writeln(destination, "|", e.name().replace("\\", "/"), "|", rsource);
+            
+            writeln(destination ~ e.name().replace("\\", "/").replace(rsource, ""));
+            
             string[] copied_items = CopyItem(e.name().replace("\\", "/"), destination ~ e.name().replace("\\", "/").replace(rsource, ""));
             
             foreach(string copied_item; copied_items)

@@ -25,12 +25,9 @@ TO DO:
    
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
    
-   -ability to store platform configs for languages in different files and reference them from the main one
-   
-   -tool to link languages to platform config
-   
 BUGS:
    -crash if the output dir is a file
+   -as a source this works "../Source/Accel/" but this doesnt "../Source/Accel" 
    -
    
 NOTES:
@@ -41,6 +38,7 @@ NOTES:
 */
 
 const bool DEBUG_PRINTING = false;
+const bool delete_temp_dir = true;
 
 static if(DEBUG_PRINTING)
 {
@@ -110,6 +108,7 @@ struct FileDescription
    string path;
    string begining = "";
    string ending = "";
+   bool filtered;
    FileType type;
 }
 
@@ -176,6 +175,43 @@ struct ProcessedTag
 
 const bool default_build_silent = false;
 
+void LinkPlatformConfig(string config_to_link, string platform_config_path)
+{
+   writeln("Linking ", config_to_link, " to ", platform_config_path);
+   JSONValue platform_config_json = LoadJSONFile(platform_config_path);
+   
+   if(HasJSON(platform_config_json, "linked"))
+   {
+      JSONValue linked_json = platform_config_json["linked"];
+      
+      if(linked_json.type() == JSON_TYPE.ARRAY)
+      {
+         bool already_linked = false;
+         
+         foreach(JSONValue json_value; linked_json.array)
+         {
+            if(json_value.type() == JSON_TYPE.STRING)
+            {
+               if(json_value.str() == config_to_link)
+                  already_linked = true;
+            }
+         }
+         
+         if(!already_linked)
+         {
+            linked_json.array ~= JSONValue(config_to_link);
+         }
+         else
+         {
+            writeln(config_to_link, " already linked");
+         }
+         
+         platform_config_json["linked"] = linked_json;
+         std.file.write(platform_config_path, platform_config_json.toPrettyString());
+      }
+   }
+}
+
 void LaunchConfig(string default_platform_config_path,
                   string config_file_path,
                   string[] args,
@@ -236,6 +272,20 @@ void LaunchConfig(string default_platform_config_path,
             }
             break;
             
+            case "-pLink":
+            {
+               if(args.length > (i + 1))
+               {
+                  string config_to_link = args[++i];
+                  LinkPlatformConfig(config_to_link, platform_config_path);
+               }
+               else
+               {
+                  writeln("Missing argument for option \"-pLink\"");
+               }
+            }
+            break;
+            
             case "-silent":
             {
                silent_build = true;
@@ -272,6 +322,9 @@ void LaunchConfig(string default_platform_config_path,
 
 void main(string[] args)
 {
+   if(!delete_temp_dir)
+      writeln("TEMPORARY DIRECTORY DELETION DISABLED!");
+   
    if(args.length < 2)
    {
       writeln("Insufficient arguments!");
@@ -304,7 +357,6 @@ string GetDefaultRoutine(string file_path)
       ExitError(file_path ~ " not found!");
    }
 
-   //TODO: rework
    JSONValue file_json = LoadJSONFile(file_path);
    
    if(HasJSON(file_json, "default"))
@@ -366,14 +418,11 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    }
    else
    {
-      //TODO: default type
-      /*
-      if(HasDefaultType(state.routine_info.platform_config_path, build_info.language, state))
+      if(HasDefaultType(state.routine_info.platform_config_path, build_info.language))
       {
          build_info.type = GetDefaultType(state.routine_info.platform_config_path, build_info.language, state);
       }
       else
-      */
       {
          build_info.can_build = false;
       }
@@ -410,6 +459,16 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    else
    {
       build_info.can_build = false;
+   }
+   
+   JSONStringArray outputs;
+   if(GetJSONStringArray(state, "outputs", &outputs))
+   {
+      build_info.outputs = outputs.get();
+   }
+   else
+   {
+      build_info.outputs = GetLanguageFileEndings(state.routine_info.platform_config_path, build_info.language, build_info.type, state);
    }
    
    if(!build_info.can_build)
@@ -664,7 +723,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
    if(!HasJSON(routine_json, "per-operations"))
    {
       Build(output_directory, temp_dir, state);
-      rmdirRecurse(temp_dir);
+      static if(delete_temp_dir) { rmdirRecurse(temp_dir); }
       return;
    }
    
@@ -733,7 +792,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
       }
    }
    
-   rmdirRecurse(temp_dir);
+   static if(delete_temp_dir) { rmdirRecurse(temp_dir); }
 }
 
 void BuildOperation(RoutineState state)
@@ -1172,8 +1231,41 @@ JSONValue GetLanguageJSON(string file_path, string language_name)
    {
       JSONValue links_json = file_json["links"];
       
-      //TODO: runtime linking against other platform configs
-      //string[] linked_configs = LoadStringArrayFromTag(state, links_json, TagType.StringArray);
+      string exe_path = thisExePath();
+      string exe_dir = GetFileDirectory(exe_path);
+      
+      if(links_json.type() == JSON_TYPE.ARRAY)
+      {
+         Array!string linked_configs = Array!string();
+         
+         foreach(JSONValue json_value; links_json.array)
+         {
+            if(json_value.type() == JSON_TYPE.STRING)
+            {
+               linked_configs.insert(json_value.str());
+            }
+         }
+         
+         foreach(string linked_config; linked_configs)
+         {
+            //TODO: clean this up
+            //it currently relies on the fact that the path is 
+            //like this "dir/config.json" or "config.json" 
+            //but "/config.json" will break
+            JSONValue linked_config_json = LoadJSONFile(exe_dir ~ "/" ~ linked_config);
+            
+            if(HasJSON(linked_config_json, "languages"))
+            {
+               JSONValue languages_json = linked_config_json["languages"];
+         
+               if(HasJSON(languages_json, language_name))
+               {
+                  JSONValue language_json = languages_json[language_name];
+                  return language_json;
+               }
+            }
+         }
+      }
    }
    
    ExitError("Platform config missing for language \"" ~ language_name ~ "\"");
@@ -1376,6 +1468,25 @@ string[int][string] GetAvailablePlatforms(string file_path, string language)
    return platforms;
 }
 
+bool HasDefaultType(string file_path, string language)
+{
+   JSONValue language_json = GetLanguageJSON(file_path, language);
+   
+   return HasJSON(language_json, "default_type");
+}
+
+string GetDefaultType(string file_path, string language, RoutineState state)
+{
+   JSONValue language_json = GetLanguageJSON(file_path, language);
+   
+   if(HasDefaultType(file_path, language))
+   {
+      return LoadStringFromTag(state, language_json["default_type"]);
+   }
+   
+   return null;
+}
+
 const string var_decl_begin = "[VAR ";
 const string var_decl_end = "]";
 
@@ -1476,21 +1587,6 @@ Variable[] GetVariables(RoutineState state,
    return vars;
 }
 
-string CombindStrings(string[] strings)
-{
-   string result = "";
-
-   foreach(string str; strings)
-   {
-      result = result ~ " " ~ str;
-   }
-   
-   if(result.length > 1)
-      return result[1 .. $];
-      
-   return result;
-}
-
 RoutineInfo MakeRoutine(string file_path,
                          string routine_name,
                          string default_platform_config_path,
@@ -1505,7 +1601,6 @@ RoutineInfo MakeRoutine(string file_path,
    
    if(can_specify_platform_config)
    {
-      //TODO: GetRoutineJSON
       JSONValue file_json = LoadJSONFile(file_path);
       
       if(HasJSON(file_json, routine_name))
@@ -1650,6 +1745,21 @@ bool HandleConditional(RoutineState state,
    return false;
 }
 
+string CombindStrings(string[] strings)
+{
+   string result = "";
+
+   foreach(string str; strings)
+   {
+      result = result ~ " " ~ str;
+   }
+   
+   if(result.length > 1)
+      return result[1 .. $];
+    
+   return "";
+}
+
 ProcessedTag ProcessTag(RoutineState state,
                         string str,
                         string[string] replace_additions,
@@ -1713,7 +1823,7 @@ ProcessedTag ProcessTag(RoutineState state,
    {
       result.str = CombindStrings(result.array);
    }
-   
+      
    return result;
 }
 
@@ -1986,6 +2096,7 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
          if(json_value.type() == JSON_TYPE.STRING)
          {
             fdesc.path = json_value.str();
+            fdesc.filtered = false;
          }
          else
          {
@@ -2002,16 +2113,19 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
                {
                   fdesc.path = strings[1];
                   fdesc.type = to!FileType(strings[0]);
+                  fdesc.filtered = false;
                }
                else
                {
                   fdesc.ending = strings[1];
+                  fdesc.filtered = true;
                }
             }  
             else if(strings.length == 3)
             {
                fdesc.begining = strings[1];
                fdesc.ending = strings[2];
+               fdesc.filtered = true;
             }
          }
          
@@ -2022,6 +2136,7 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
    {
       FileDescription fdesc;
       fdesc.path = json.str();
+      fdesc.filtered = false;
       
       file_list.insert(fdesc);
    }
@@ -2258,6 +2373,9 @@ bool GetJSONStringArray(RoutineState state, string var_name, JSONStringArray *re
 
 string[] CopyItem(string source, string dest)
 {
+   source = source.replace("\\", "/");
+   dest = dest.replace("\\", "/");
+   
    try
    {
       if(exists(source))
@@ -2269,7 +2387,7 @@ string[] CopyItem(string source, string dest)
             if(!exists(dest_directory))   
                mkdirRecurse(dest_directory);
             
-            if(dest.endsWith("/") || dest.endsWith("\\"))
+            if(dest.endsWith("/"))
             {
                dest = dest ~ GetFileName(source);
             }
@@ -2292,8 +2410,11 @@ string[] CopyItem(string source, string dest)
             {
                if(e.isFile())
                {
-                  copy(e.name, dest ~ e.name().replace(source, ""));
-                  result_list.insert(dest ~ e.name().replace(source, ""));
+                  string rsource = source ~ (source.endsWith("/") ? "" : "/");
+                  string dest_name = dest.replace("\\", "/") ~ e.name().replace("\\", "/").replace(rsource, "");
+                  
+                  copy(e.name, dest ~ e.name().replace(source, ""));      
+                  result_list.insert(dest_name);
                }
             }
             
@@ -2313,8 +2434,12 @@ string[] CopyItem(string source, string dest)
    return new string[0];
 }
 
+//TODO: fix this, coping into nested folders not working!
 void CopyMatchingItems_internal(string source, string destination, string begining, string ending, int depth, Array!string *result)
 {
+   source = source.replace("\\", "/");
+   destination = destination.replace("\\", "/");
+
    if(isDir(source))
    {
       foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
@@ -2326,6 +2451,7 @@ void CopyMatchingItems_internal(string source, string destination, string begini
          
          if(e.isDir() && ((depth - 1) >= 0))
          {
+            //the bug is around here i think
             CopyMatchingItems_internal(e.name(), destination ~ e.name().replace(source, ""), begining, ending, depth - 1, result);
          }
          
@@ -2334,10 +2460,13 @@ void CopyMatchingItems_internal(string source, string destination, string begini
             if(!exists(destination))
                mkdirRecurse(destination);
          
-            string[] copied_items = CopyItem(e.name(), destination ~ e.name().replace(source, ""));
+            string rsource = source ~ (source.endsWith("/") ? "" : "/");
+            string[] copied_items = CopyItem(e.name().replace("\\", "/"), destination ~ e.name().replace("\\", "/").replace(rsource, ""));
             
             foreach(string copied_item; copied_items)
+            {
                result.insert(copied_item);
+            }
          }
       }
    }
@@ -2465,7 +2594,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
          {
             string[] src_files = null;
             
-            if((source.begining != "") || (source.ending != ""))
+            if(source.filtered)
             {
                src_files = CopyMatchingItems(PathF(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending);               
             }
@@ -2537,7 +2666,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
                WriteMsg("FDep " ~ PathF(dep.path, state.routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
                string[] dep_files = null;
              
-               if((dep.begining != "") || (dep.ending != ""))
+               if(dep.filtered)
                {
                   dep_files = CopyMatchingItems(PathF(dep.path, state.routine_info), build_dir ~ "/", dep.begining, dep.ending);
                }
@@ -2646,8 +2775,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
    
    foreach(string file_ending; GetLanguageFileEndings(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type, state))
    {
-      //TODO: allow specification of build outputs
-      //if(state.build_info.outputs.canFind(file_ending))
+      if(state.build_info.outputs.canFind(file_ending))
       {
          CopyItem(build_dir ~ "/" ~ state.build_info.project_name ~ file_ending, PathF(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
       }

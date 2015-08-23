@@ -37,8 +37,8 @@
             "if": "OS=Linux",
             "then": ["print", "Printed on Linux"]
          },
-         ["print", "[fread ../testbuild/test.txt]"],
          ["fwrite", "../testbuild/test.txt", "-append", "TEST "],
+         ["print", "[fread ../testbuild/test.txt]"],
          ["call", "=", "SayHi"]
       ],
       "per-operations":

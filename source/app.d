@@ -31,6 +31,7 @@ TO DO:
 BUGS:
    -crash if the output dir is a file
    -as a source this works "../Source/Accel/" but this doesnt "../Source/Accel" 
+   -cant fread a file right after fwrite
    -
    
 NOTES:
@@ -188,12 +189,6 @@ struct ProcessedTag
 {
    string str;
    string[] array;
-}
-
-enum PathType
-{
-   File,
-   Dir
 }
 
 //TODO: is this better than just a string?
@@ -874,81 +869,92 @@ void BuildOperation(RoutineState state)
 
 void CopyOperation(RoutineInfo routine_info, string[] params)
 {
+   if(params.length < 2)
+      return;
+
+   string src = RelativePath(FormatPath(params[0]), routine_info);
+   string dest = RelativePath(FormatPath(params[1]), routine_info);
+      
    if(params.length == 2)
    {
-      WriteMsg("\tCopy ", PathF(params[0], routine_info), " -> ", PathF(params[1], routine_info));
-      CopyItem(PathF(params[0], routine_info), PathF(params[1], routine_info));
+      WriteMsg("\tCopy ", src, " -> ", dest);
+      CopyItem(src, dest);
    }
    else if(params.length == 3)
    {
-      WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
+      WriteMsg("\tCopy ", src, " (", params[2], ") -> ", dest);
+      CopyMatchingItems(src, dest, "", params[2]);
    }
    else if(params.length == 4)
    {
       if(IsValid!int(params[3]))
       {
-         WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
+         WriteMsg("\tCopy ", src, " (", params[2], ") -> ", dest);
+         CopyMatchingItems(src, dest, "", params[2], to!int(params[3]));
       }
       else
       {
-         WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         WriteMsg("\tCopy ", src, " (", params[2], " ", params[3], ") -> ", dest);
+         CopyMatchingItems(src, dest, params[2], params[3]);
       }
    }
    else if(params.length == 5)
    {
-      WriteMsg("\tCopy ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
+      WriteMsg("\tCopy ", src, " (", params[2], " ", params[3], ") -> ", dest);
       
       if(IsValid!int(params[4]))
       {
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
+         CopyMatchingItems(src, dest, params[2], params[3], to!int(params[4]));
       }
       else
       {
          writeln(params[4], " failed to convert from string to int!");
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
+         CopyMatchingItems(src, dest, params[2], params[3]);
       }
    }
 }
 
 void DeleteOperation(RoutineInfo routine_info, string[] params)
 {  
+   if(params.length < 1)
+      return;
+
+   string path = RelativePath(FormatPath(params[0]), routine_info);
+      
    if(params.length == 1)
    {
-      WriteMsg("\tDelete ", PathF(params[0], routine_info), " -> /dev/null");
-      DeleteItem(PathF(params[0], routine_info));
+      WriteMsg("\tDelete ", path, " -> /dev/null");
+      DeleteItem(path);
    }
    else if(params.length == 2)
    {
-      WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
-      DeleteMatchingItems(PathF(params[0], routine_info), "", params[1]);
+      WriteMsg("\tDelete ", path, " (", params[1], ") -> /dev/null");
+      DeleteMatchingItems(path, "", params[1]);
    }
    else if(params.length == 3)
    {
       if(IsValid!int(params[2]))
       {
-         WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], ") -> /dev/null");
-         DeleteMatchingItems(PathF(params[0], routine_info), "", params[1], to!int(params[2]));
+         WriteMsg("\tDelete ", path, " (", params[1], ") -> /dev/null");
+         DeleteMatchingItems(path, "", params[1], to!int(params[2]));
       }
       else
       {
-         WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
-         DeleteMatchingItems(PathF(params[0], routine_info), params[1], params[2]);
+         WriteMsg("\tDelete ", path, " (", params[1], " ", params[2], ") -> /dev/null");
+         DeleteMatchingItems(path, params[1], params[2]);
       }
    }
    else if(params.length == 4)
    {
       if(IsValid!int(params[3]))
       {
-         WriteMsg("\tDelete ", PathF(params[0], routine_info), " (", params[1], " ", params[2], ") -> /dev/null");
-         DeleteMatchingItems(PathF(params[0], routine_info), params[1], params[2], to!int(params[3]));
+         WriteMsg("\tDelete ", path, " (", params[1], " ", params[2], ") -> /dev/null");
+         DeleteMatchingItems(path, params[1], params[2], to!int(params[3]));
       }
       else
       {
          writeln(params[3], " failed to convert from string to int!");
-         DeleteMatchingItems(PathF(params[0], routine_info), params[1], params[2]);
+         DeleteMatchingItems(path, params[1], params[2]);
       }
    }
 }
@@ -1923,13 +1929,16 @@ string RelativePath(string path, RoutineInfo routine)
    return new_path;
 }
 
-string FormatPath(string path, PathType type)
+string FormatPath(string path)
 {
    string new_path = path;
    
    new_path = new_path.replace("\\", "/");
    
-   if((type == PathType.Dir) && !new_path.endsWith("/"))
+   //TODO: directory detection
+   bool is_dir = false;
+   
+   if(is_dir && !new_path.endsWith("/"))
       new_path = new_path ~ "/";
    
    if(new_path.startsWith("~/"))

@@ -19,11 +19,11 @@
          ["||", "My Target: [VAR target]"],
          ["||", "LIB Version: [VAR make_lib.json>version_string]"],
          {
-            "if": "HASVAR=type",
+            "if": "HASVAR(type)",
             "then": ["print", "has type"]
          },
          {
-            "if": "HASVAR=random",
+            "if": "HASVAR(random)",
             "then": ["print", "has random"],
             "else": ["print", "doesn't have random"]
          },
@@ -37,6 +37,8 @@
             "if": "OS=Linux",
             "then": ["print", "Printed on Linux"]
          },
+         ["print", "[fread ../testbuild/test.txt]"],
+         ["fwrite", "../testbuild/test.txt", "-append", "TEST "],
          ["call", "=", "SayHi"]
       ],
       "per-operations":

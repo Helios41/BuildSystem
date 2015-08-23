@@ -15,13 +15,16 @@ import std.datetime;
 TO DO:   
    -ability to load multiple file descriptions from a conditional
    -ability to reference dependencies as a var
-    
-   -file reading & file system querying
+   -patch all functions that load data structures to be able to load them from vars
+   
+   -C++ config
+   -allow defines to be set as variable in config (C & C++)
    
    -test on linux
-   -cleanup forward vs. backward slashes (only use forward)
    
-   -allow platform config to execute rebuild operations along with the regular cmd commands
+   -Load all file paths using one common util function
+   -Enforce a path naming standard, convert to this standard in the util function
+   -cleanup forward vs. backward slashes (only use forward)
    
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
    
@@ -35,6 +38,14 @@ NOTES:
    -Is setting the platform to the host for the regular operations the right thing to do?
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
    -["copy", "../example/Example.sol", "[OUTPUT_DIRECTORY]"] causes the output dir to become a file
+*/
+
+/**
+Path Naming Standard:
+   -directories end with a '/'
+   -only use forward shashes, no backward slashes
+   -do not support absolute paths or ~/ shell shortcut
+   -
 */
 
 const bool DEBUG_PRINTING = false;
@@ -155,6 +166,12 @@ struct Variable
    string[] value;
 }
 
+struct FileInput
+{
+   string decl;
+   string value;
+}
+
 struct CommandInformation
 {
    string command;
@@ -172,6 +189,29 @@ struct ProcessedTag
    string str;
    string[] array;
 }
+
+enum PathType
+{
+   File,
+   Dir
+}
+
+//TODO: is this better than just a string?
+/*
+struct Path
+{
+   bool relative;
+   string value;
+   
+   string get(RoutineInfo routine)
+   {
+      if(relative)
+         return RelativePath(value, routine);
+         
+      return value;
+   }
+}
+*/
 
 const bool default_build_silent = false;
 
@@ -1007,6 +1047,8 @@ void PrintOperation(string[] params, string routine_name)
 {
    string to_print = "";
    string separator = "";
+   const string default_prefix = "[print: " ~ routine_name ~ "] ";
+   string prefix = default_prefix;
    
    for(int i = 0; params.length > i; ++i)
    {
@@ -1036,6 +1078,26 @@ void PrintOperation(string[] params, string routine_name)
             }
             break;
             
+            case "-prefix":
+            {
+               if(params.length > (i + 1))
+               {
+                  if(prefix == default_prefix)
+                  {
+                     prefix = params[++i];
+                  }
+                  else
+                  {
+                     writeln("[print error] Prefix can only be set once");
+                  }
+               }
+               else
+               {
+                  writeln("[print error] Missing argument for option \"-prefix\"");
+               }
+            }
+            break;
+            
             default:
          }
       }
@@ -1050,7 +1112,7 @@ void PrintOperation(string[] params, string routine_name)
       to_print = to_print[separator.length .. $];
    }
    
-   writeln("[print: " ~ routine_name ~ "] ", to_print);
+   writeln(prefix, to_print);
 }
 
 void FileWriteOperation(RoutineInfo routine_info, string[] params)
@@ -1061,7 +1123,7 @@ void FileWriteOperation(RoutineInfo routine_info, string[] params)
       bool append = false;
       string to_write = "";
       
-      foreach(string param; params)
+      foreach(string param; params[1 .. $])
       {
          if(param.startsWith("-"))
          {
@@ -1568,6 +1630,7 @@ Variable[] GetVariables(RoutineState state,
          ExitError("Invalid variable declaration: " ~ var_decl);
       }
       
+      //TODO: why not pass the parent's error log?
       Array!string error_log = Array!string();
       
       RoutineState access_state;
@@ -1599,6 +1662,44 @@ Variable[] GetVariables(RoutineState state,
    }
    
    return vars;
+}
+
+const string fread_decl_begin = "[fread ";
+const string fread_decl_end = "]";
+
+FileInput[] GetFileInputs(RoutineState state, string tag_str)
+{
+   int fread_count = min(tag_str.count(fread_decl_begin),
+                         tag_str.count(fread_decl_end));
+                         
+   FileInput[] freads = new FileInput[fread_count];
+   int str_index = 0;
+   
+   for(int i = 0; i < fread_count; ++i)
+   {
+      int fread_index = tag_str.indexOf(fread_decl_begin, str_index);
+      int fread_end_index = tag_str.indexOf(fread_decl_end, fread_index);
+      string fread_decl = tag_str[fread_index .. fread_end_index + 1];
+      
+      string fread_param = fread_decl[fread_decl_begin.length .. $ - fread_decl_end.length];
+      string file_path = PathF(fread_param, state.routine_info);
+      
+      freads[i].decl = fread_decl;
+      
+      if(exists(file_path))
+      {
+         if(isFile(file_path))
+         {
+            freads[i].value = std.file.readText(file_path);
+            continue;
+         }
+      }
+      
+      state.error_log.insert("File \"" ~ fread_param ~ "\" not found");
+      freads[i].value = "";
+   }
+   
+   return freads;
 }
 
 RoutineInfo MakeRoutine(string file_path,
@@ -1657,6 +1758,7 @@ bool IsJSONBool(JSONValue json)
    return (json.type() == JSON_TYPE.TRUE) || (json.type() == JSON_TYPE.FALSE);
 }
 
+//TODO: replace PathF with RelativePath
 string PathF(string str, RoutineInfo routine)
 {
    string new_str = str;
@@ -1697,8 +1799,23 @@ bool JSONMapString(JSONValue json, void delegate(string str, int i) map_func)
 bool HandleConditional(RoutineState state,
                        string condit_str)
 {
-   string conditional = condit_str[0 .. condit_str.indexOf("=") + 1];
-   string value = condit_str[condit_str.indexOf("=") + 1 .. $];
+   string conditional = "";
+   string value = "";
+   
+   if(condit_str.canFind("="))
+   {
+      conditional = condit_str[0 .. condit_str.indexOf("=") + 1];
+      value = condit_str[condit_str.indexOf("=") + 1 .. $];
+   }
+   else if(condit_str.canFind("(") && condit_str.canFind(")"))
+   {
+      conditional = condit_str[0 .. condit_str.indexOf("(") + 1];
+      value = condit_str[condit_str.indexOf("(") + 1 .. $ - 1];
+   }
+   else
+   {
+      ExitError("Invalid conditional");
+   }
    
    switch(conditional)
    {
@@ -1737,7 +1854,7 @@ bool HandleConditional(RoutineState state,
          return (to!string(state.version_info.type == VersionType.Patch) == value);
       }
       
-      case "HASVAR=":
+      case "HASVAR(":
       {
          JSONValue routine_json = GetRoutineJSON(state.routine_info);
          if(HasJSON(routine_json, value))
@@ -1749,6 +1866,26 @@ bool HandleConditional(RoutineState state,
             {
                return true;
             }
+         }
+         return false;
+      }
+      
+      case "ISFILE(":
+      {
+         string file_path = PathF(value, state.routine_info);
+         if(exists(file_path))
+         {
+            return isFile(file_path);
+         }
+         return false;
+      }
+      
+      case "ISDIR(":
+      {
+         string file_path = PathF(value, state.routine_info);
+         if(exists(file_path))
+         {
+            return isDir(file_path);
          }
          return false;
       }
@@ -1774,6 +1911,42 @@ string CombindStrings(string[] strings)
    return "";
 }
 
+string RelativePath(string path, RoutineInfo routine)
+{
+   string new_path = path;
+   
+   if(new_path.startsWith("./"))
+      new_path = new_path[2 .. $];
+      
+   new_path = routine.directory ~ new_path;
+      
+   return new_path;
+}
+
+string FormatPath(string path, PathType type)
+{
+   string new_path = path;
+   
+   new_path = new_path.replace("\\", "/");
+   
+   if((type == PathType.Dir) && !new_path.endsWith("/"))
+      new_path = new_path ~ "/";
+   
+   if(new_path.startsWith("~/"))
+   {
+      writeln("does not support user dir shortcut");
+      new_path = new_path[2 .. $];
+   }
+   
+   if(new_path.startsWith("/"))
+   {
+      writeln("does not support absolute paths");
+      new_path = new_path[1 .. $];
+   }
+   
+   return new_path;
+}
+
 ProcessedTag ProcessTag(RoutineState state,
                         string str,
                         string[string] replace_additions,
@@ -1794,6 +1967,11 @@ ProcessedTag ProcessTag(RoutineState state,
       {
          new_str = new_str.replace(orig_str, repl_str);
       }
+   }
+   
+   foreach(FileInput fread; GetFileInputs(state, new_str))
+   {
+      new_str = new_str.replace(fread.decl, fread.value);
    }
    
    Array!string tag_list = Array!string();
@@ -2770,6 +2948,39 @@ void Build(string output_folder, string build_dir, RoutineState state)
    replace_additions["[BUILD_DIRECTORY]"] = build_dir;
    replace_additions["[SOURCES]"] = sources;
    replace_additions["[DEPENDENCIES]"] = dependencies;
+   
+   //TODO: allow platform config to execute rebuild operations along with the regular cmd commands
+   /*
+   CommandInformation[] commands = LoadCommandsFromTag(state,
+                                                       GetLanguageOperationsTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),
+                                                       replace_additions);
+   
+   void delegate(RoutineState state)[string] extra_operations;
+      
+   extra_operations["build"] = delegate(RoutineState p_state)
+   {
+      string[] commands = LoadStringArrayFromTag(p_state,
+                                                 GetLanguageCommandTag(p_state.routine_info.platform_config_path, p_state.build_info.language, p_state.build_info.type),
+                                                 TagType.String,
+                                                 replace_additions);
+   
+      foreach(string command; commands)
+      {                                   
+         command_batch = command_batch ~ " && ( " ~ command ~ " )";
+      }
+      
+      command_batch = "(" ~ command_batch[4 .. $] ~ ")";
+      
+      if(p_state.build_info.silent_build)
+      {
+         command_batch = pipeToNUL(command_batch);
+      }
+      
+      system(toStringz(command_batch));
+   };
+   
+   ExecuteOperation();
+   */
    
    string[] commands = LoadStringArrayFromTag(state,
                                               GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),

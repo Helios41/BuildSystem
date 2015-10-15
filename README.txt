@@ -7,6 +7,8 @@ Still being actively developed, use at your own risk.
 Things will change and break!
 Complete build coming soon
 
+Requires CURL
+
 Documentation:
    Configuration files are in JSON format.
    

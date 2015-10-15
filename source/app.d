@@ -17,28 +17,43 @@ TO DO:
    -ability to reference dependencies as a var
    -patch all functions that load data structures to be able to load them from vars
    
-   -C++ config
+   -C++ & java configs
    -allow defines to be set as variable in config (C & C++)
-   
-   -test on linux
    
    -Load all file paths using one common util function
    -Enforce a path naming standard, convert to this standard in the util function
    -cleanup forward vs. backward slashes (only use forward)
    
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
-   
+
+   -util function for replacing builtins
+   -
+ 
 BUGS:
    -crash if the output dir is a file
    -as a source this works "../Source/Accel/" but this doesnt "../Source/Accel" 
    -cant fread a file right after fwrite
-   -
+	-
    
 NOTES:
    -CopyFile -> CopyItem (Item = both folders & files)
    -Is setting the platform to the host for the regular operations the right thing to do?
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
    -["copy", "../example/Example.sol", "[OUTPUT_DIRECTORY]"] causes the output dir to become a file
+*/
+
+/**
+Linux Testing:
+NOTES:
+	-Bash uses "{ " & ";}" instead of "(" & ")"
+	-Linux binaries dont have a file ending
+	-linux needs rpath for so's 
+   -
+
+TODO:
+	-binaries dont have permissions (try to chmod?)
+	-
+   -
 */
 
 /**
@@ -268,7 +283,7 @@ void LaunchConfig(string default_platform_config_path,
    for(int i = 0; args.length > i; ++i)
    {
       string argument = args[i];
-      
+     
       if(argument.startsWith("-"))
       {
          switch(argument)
@@ -307,20 +322,6 @@ void LaunchConfig(string default_platform_config_path,
             }
             break;
             
-            case "-pLink":
-            {
-               if(args.length > (i + 1))
-               {
-                  string config_to_link = args[++i];
-                  LinkPlatformConfig(config_to_link, platform_config_path);
-               }
-               else
-               {
-                  writeln("Missing argument for option \"-pLink\"");
-               }
-            }
-            break;
-            
             case "-silent":
             {
                silent_build = true;
@@ -333,6 +334,20 @@ void LaunchConfig(string default_platform_config_path,
             }
             break;
             
+            case "-pLink":
+            {
+               if(args.length > (i + 1))
+               {
+                  string config_to_link = args[++i];
+                  LinkPlatformConfig(config_to_link, platform_config_path);
+               }
+               else
+               {
+                  writeln("Missing argument for option \"-pLink\"");
+               }
+            }
+            break;   
+ 
             default:
                writeln("Unknown option ", argument);
                break;
@@ -372,7 +387,9 @@ void main(string[] args)
    
    const string default_platform_config_path = exe_dir ~ "/platform_config.json";
    string config_file_path = args[1];
-   
+  
+   //TODO: if first arg is -pLink than do that
+ 
    if(!exists(default_platform_config_path))
    {
       writeln("Default platform config file missing! Generating empty json!");
@@ -1155,11 +1172,13 @@ void FileWriteOperation(RoutineInfo routine_info, string[] params)
       
       if(append && exists(file_path))
       {
+         WriteMsg("Append To " ~ file_path);
          string file_contents = readText(file_path);
          std.file.write(file_path, file_contents ~ to_write);
       }
       else
       {
+         WriteMsg("Write To " ~ file_path);
          std.file.write(file_path, to_write);
       }
    }
@@ -1575,16 +1594,16 @@ const string var_decl_end = "]";
 Variable[] GetVariables(RoutineState state,
                         string tag_str)
 {
-   int var_count = min(tag_str.count(var_decl_begin),
-                       tag_str.count(var_decl_end));
+   int var_count = cast(int) min(tag_str.count(var_decl_begin),
+                       	     tag_str.count(var_decl_end));
    
    Variable[] vars = new Variable[var_count];
    int str_index = 0;
    
    for(int i = 0; i < var_count; ++i)
    {
-      int var_index = tag_str.indexOf(var_decl_begin, str_index);
-      int var_end_index = tag_str.indexOf(var_decl_end, var_index);
+      int var_index = cast(int) tag_str.indexOf(var_decl_begin, str_index);
+      int var_end_index = cast(int) tag_str.indexOf(var_decl_end, var_index);
       string var_decl = tag_str[var_index .. var_end_index + 1];
       
       string file_path;
@@ -1636,7 +1655,6 @@ Variable[] GetVariables(RoutineState state,
          ExitError("Invalid variable declaration: " ~ var_decl);
       }
       
-      //TODO: why not pass the parent's error log?
       Array!string error_log = Array!string();
       
       RoutineState access_state;
@@ -1651,7 +1669,7 @@ Variable[] GetVariables(RoutineState state,
       var.declare = var_decl;
       var.value = null;
       var.location = var_index;
-      var.length = var_decl.length;
+      var.length = cast(int) var_decl.length;
       
       if(HasJSON(access_json, var_name))
       {
@@ -1675,16 +1693,16 @@ const string fread_decl_end = "]";
 
 FileInput[] GetFileInputs(RoutineState state, string tag_str)
 {
-   int fread_count = min(tag_str.count(fread_decl_begin),
-                         tag_str.count(fread_decl_end));
+   int fread_count = cast(int) min(tag_str.count(fread_decl_begin),
+                                   tag_str.count(fread_decl_end));
                          
    FileInput[] freads = new FileInput[fread_count];
    int str_index = 0;
    
    for(int i = 0; i < fread_count; ++i)
    {
-      int fread_index = tag_str.indexOf(fread_decl_begin, str_index);
-      int fread_end_index = tag_str.indexOf(fread_decl_end, fread_index);
+      int fread_index = cast(int) tag_str.indexOf(fread_decl_begin, str_index);
+      int fread_end_index = cast(int) tag_str.indexOf(fread_decl_end, fread_index);
       string fread_decl = tag_str[fread_index .. fread_end_index + 1];
       
       string fread_param = fread_decl[fread_decl_begin.length .. $ - fread_decl_end.length];
@@ -2039,28 +2057,54 @@ string LoadStringFromTag(RoutineState state,
          JSONValue if_json = json["if"];
          JSONValue then_json = json["then"];
          
-         if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)) &&
-            (then_json.type() == JSON_TYPE.STRING))
+         if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)))
          {
             bool condit_state = true;
             
             JSONMapString(if_json, (string condit_str, int i)
             {
-               condit_state = condit_state && HandleConditional(state, condit_str);
+               condit_state = condit_state && HandleConditional(state, ProcessTag(state, condit_str, replace_additions, TagType.String).str);
             });
             
             if(condit_state)
             {
-               return ProcessTag(state, then_json.str(), replace_additions, TagType.String).str;
+					if((then_json.type() == JSON_TYPE.STRING) ||
+						(then_json.type() == JSON_TYPE.ARRAY))
+					{
+						string result = "";
+						
+						JSONMapString(then_json, (string value_str, int i)
+						{
+							result = result ~ ProcessTag(state, value_str, replace_additions, TagType.String).str;
+						});
+
+						return result;
+					}
+					else if(then_json.type() == JSON_TYPE.OBJECT)
+					{
+						return LoadStringFromTag(state, then_json, replace_additions);
+					}
             }
             else if(HasJSON(json, "else"))
             {
                JSONValue else_json = json["else"];
                
-               if(else_json.type() == JSON_TYPE.STRING)
+               if((else_json.type() == JSON_TYPE.STRING) ||
+						(else_json.type() == JSON_TYPE.ARRAY))
                {
-                  return ProcessTag(state, else_json.str(), replace_additions, TagType.String).str;
+						string result = "";
+						
+						JSONMapString(else_json, (string value_str, int i)
+						{
+							result = result ~ ProcessTag(state, value_str, replace_additions, TagType.String).str;	
+						});					
+
+                  return result;
                }
+					else if(else_json.type() == JSON_TYPE.OBJECT)
+					{
+						return LoadStringFromTag(state, else_json, replace_additions);
+					}
             }
          }
       }
@@ -2074,6 +2118,7 @@ string LoadStringFromTag(RoutineState state,
    return null;
 }
 
+//TODO: improve LoadBoolFromTag to match LoadStringFromTag functionallity
 bool LoadBoolFromTag(RoutineState state,
                      JSONValue json)
 {
@@ -2159,31 +2204,46 @@ void LoadStringArrayFromTag_internal(RoutineState state,
       JSONValue if_json = json["if"];
       JSONValue then_json = json["then"];
       
-      if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)) &&
-         ((then_json.type() == JSON_TYPE.STRING) || (then_json.type() == JSON_TYPE.ARRAY)))
+      if(((if_json.type() == JSON_TYPE.STRING) || (if_json.type() == JSON_TYPE.ARRAY)))
       {
          bool condit_state = true;
          
          JSONMapString(if_json, (string condit_str, int i)
          {
-            condit_state = condit_state && HandleConditional(state, condit_str);
+            condit_state = condit_state && HandleConditional(state, ProcessTag(state, condit_str, replace_additions, TagType.String).str);
          });
          
          if(condit_state)
          {
-            JSONMapString(then_json, (string str, int i)
-            {
-               InsertProcessedTags(sarray, state, str, replace_additions, type);
-            });
+				if((then_json.type() == JSON_TYPE.STRING) ||
+					(then_json.type() == JSON_TYPE.ARRAY))
+				{
+            	JSONMapString(then_json, (string str, int i)
+            	{
+              		InsertProcessedTags(sarray, state, str, replace_additions, type);
+            	});
+				}
+				else if(then_json.type() == JSON_TYPE.OBJECT)
+				{
+					LoadStringArrayFromTag_internal(state, then_json, sarray, replace_additions, type);
+				}
          }
          else if(HasJSON(json, "else"))
          {
             JSONValue else_json = json["else"];
-            
-            JSONMapString(else_json, (string str, int i)
-            {
-               InsertProcessedTags(sarray, state, str, replace_additions, type);
-            }); 
+           
+				if((else_json.type() == JSON_TYPE.STRING) ||
+					(else_json.type() == JSON_TYPE.ARRAY))
+				{ 
+            	JSONMapString(else_json, (string str, int i)
+            	{
+               	InsertProcessedTags(sarray, state, str, replace_additions, type);
+            	});
+				}
+				else if(else_json.type() == JSON_TYPE.OBJECT)
+				{
+					LoadStringArrayFromTag_internal(state, else_json, sarray, replace_additions, type);
+				} 
          }
       }
    }
@@ -2750,7 +2810,7 @@ string pipeToNUL(string str)
    }
    else
    {
-      return "(" ~ str ~ ") 2>&1 > /dev/null";
+      return "(" ~ str ~ ") >/dev/null 2>&1";
    }
 }
 
@@ -2775,7 +2835,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
    string version_string = GetVersionString(state.version_info);
    string output_file_name = state.build_info.project_name ~ 
                              (state.version_info.is_versioned ? (state.version_info.breakS ~ version_string) : "");
-   
+  
    if(!exists(PathF(output_folder, state.routine_info)))
    {
       mkdirRecurse(PathF(output_folder, state.routine_info));
@@ -2885,7 +2945,9 @@ void Build(string output_folder, string build_dir, RoutineState state)
                      dep_files = CopyItem(dep_path, build_dir ~ "/");
                   }
                }
-               
+              
+               WriteMsg(dep_files);
+ 
                if(dep_files != null)
                {
                   foreach(string dep_file; dep_files)
@@ -2957,7 +3019,8 @@ void Build(string output_folder, string build_dir, RoutineState state)
    replace_additions["[BUILD_DIRECTORY]"] = build_dir;
    replace_additions["[SOURCES]"] = sources;
    replace_additions["[DEPENDENCIES]"] = dependencies;
-   
+   replace_additions["[OUTPUT_FILE_NAME]"] = output_file_name;  
+ 
    //TODO: allow platform config to execute rebuild operations along with the regular cmd commands
    /*
    CommandInformation[] commands = LoadCommandsFromTag(state,
@@ -2995,19 +3058,34 @@ void Build(string output_folder, string build_dir, RoutineState state)
                                               GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),
                                               TagType.String,
                                               replace_additions);
-   
+  
+	version(Windows)
+	{
+		const string begin_bracket = "( ";
+		const string end_bracket = " )";
+		const string command_and = " && ";
+	}
+	else
+	{
+		const string begin_bracket = "{ ";
+		const string end_bracket = ";}";
+		const string command_and = " && ";
+	}
+ 
    foreach(string command; commands)
    {                                   
-      command_batch = command_batch ~ " && ( " ~ command ~ " )";
+      command_batch = command_batch ~ command_and ~ begin_bracket ~ command ~ end_bracket;
    }
    
-   command_batch = "(" ~ command_batch[4 .. $] ~ ")";
+   command_batch = begin_bracket ~ command_batch[command_and.length .. $] ~ end_bracket;
    
    if(state.build_info.silent_build)
    {
       command_batch = pipeToNUL(command_batch);
    }
-   
+ 
+   //Write Command Batch To STDOUT 
+	WriteMsg(command_batch); 
    system(toStringz(command_batch));
    
    foreach(string file_ending; GetLanguageFileEndings(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type, state))

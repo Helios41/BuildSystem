@@ -46,7 +46,8 @@
          ["copy", "../dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
          ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json", "1"],
          ["||", "../", "[OUTPUT_DIRECTORY]/djson/", "d", ".json", "1"],
-         ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"],
+         ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"], 
+         ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.so", "[OUTPUT_DIRECTORY]/DLTest.so"],
          "build"
       ],
       "type": "executable",
@@ -57,7 +58,7 @@
          "../test/helloworld.c",
          ["../test/", ".h"]
       ],
-      "target": ["Windows", ["X86_64", "IA-64"]],
+      "target": ["Windows", ["X86_64", "IA-64"], "Linux", ["X86"]],
       "dependencies": 
       [
          {
@@ -65,10 +66,11 @@
             "then": "[VAR WindowsDeps]"
          },
          {
-            "if": "OS=FakeLinux",
-            "then": "SomeLib.so"
+            "if": "OS=Linux",
+            "then": "/lib/i386-linux-gnu/libdl.so.2"
          },
-         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".lib"]
+         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".lib"],
+         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".a"]
       ],
       "WindowsDeps":
       [

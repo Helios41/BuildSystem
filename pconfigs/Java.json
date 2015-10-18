@@ -1,0 +1,43 @@
+{
+   "languages":
+   {
+      "Java":
+      {
+         "platforms": ["JVM"],
+         "host": ["JVM"],
+         "sources": [ ".java" ],
+         "types":
+         {
+            "executable":
+            {
+               "endings": ".jar",
+               "commands":
+               [
+                  {
+                     "if": "HASVAR(MainClass)",
+                     "then":
+                     [
+                        "cd [BUILD_DIRECTORY]",
+                        "javac [SOURCES] [DEPENDENCIES]",
+                        "echo Manifest-Version: 1.0 >> ./Manifest.txt",
+                        "echo Created-By: 1.7.0_06 (Oracle Corporation) >> ./Manifest.txt",
+                        "echo Main-Class: [MainClass] >> ./Manifest.txt",
+                        "jar cfm [PROJECT_NAME].jar Manifest.txt *.class"
+                     ]
+                  }
+               ]
+            },
+            "library"
+            {
+               "endings": ".jar",
+               "commands":
+               [
+                  "cd [BUILD_DIRECTORY]",
+                  "javac [SOURCES] [DEPENDENCIES]",
+                  "jar cf [PROJECT_NAME].jar *.class"
+               ]
+            }
+         }
+      }
+   }
+}

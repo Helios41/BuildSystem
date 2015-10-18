@@ -1,0 +1,47 @@
+{
+   "languages":
+   {
+      "D":
+      {
+         "commented_platforms": ["Linux", ["X86_64", "X86"]],
+         "commented_host": ["Linux", "X86_64"],
+         "platforms": ["Windows", ["X86_64", "X86"]],
+         "host": ["Windows", "X86_64"],
+         "sources": [ ".d" ],
+         "types":
+         {
+            "executable":
+            {
+               "commented_endings": ".exe",
+               "endings": ".exe",
+               "commands":
+               [
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "ARCH=X86",
+                     "then": 
+                     [
+			               {
+			                  "if": "OS=Windows",
+			                  "then": "dmd2vars32"	
+			               },
+                        "dmd -m32 -of[PROJECT_NAME].exe [SOURCES]"
+                     ]
+                  },
+                  {
+                     "if": "ARCH=X86_64",
+                     "then": 
+                     [
+			               {
+			                  "if": "OS=Windows",
+			                  "then": "dmd2vars64"	
+			               },
+                        "dmd -m64 -of[PROJECT_NAME].exe [SOURCES]"
+                     ]
+                  }
+               ]
+            }
+         }
+      }
+   }
+}

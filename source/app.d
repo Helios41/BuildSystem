@@ -17,12 +17,10 @@ TO DO:
    -ability to reference dependencies as a var
    -patch all functions that load data structures to be able to load them from vars
    
-   -C++ & java configs
    -allow defines to be set as variable in config (C & C++)
    
    -Load all file paths using one common util function
    -Enforce a path naming standard, convert to this standard in the util function
-   -cleanup forward vs. backward slashes (only use forward)
    
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
 
@@ -206,32 +204,15 @@ struct ProcessedTag
    string[] array;
 }
 
-//TODO: is this better than just a string?
-/*
-struct Path
-{
-   bool relative;
-   string value;
-   
-   string get(RoutineInfo routine)
-   {
-      if(relative)
-         return RelativePath(value, routine);
-         
-      return value;
-   }
-}
-*/
-
 const bool default_build_silent = false;
 
 void LinkPlatformConfig(string config_to_link, string platform_config_path)
 {
-   writeln("Linking ", config_to_link, " to ", platform_config_path);
    JSONValue platform_config_json = LoadJSONFile(platform_config_path);
    
    if(HasJSON(platform_config_json, "linked"))
    {
+      writeln("Linking ", config_to_link, " to ", platform_config_path);
       JSONValue linked_json = platform_config_json["linked"];
       
       if(linked_json.type() == JSON_TYPE.ARRAY)
@@ -259,6 +240,12 @@ void LinkPlatformConfig(string config_to_link, string platform_config_path)
          platform_config_json["linked"] = linked_json;
          std.file.write(platform_config_path, platform_config_json.toPrettyString());
       }
+   }
+   else
+   {
+      platform_config_json.object["linked"] = JSONValue(["placeholder"]); 
+      std.file.write(platform_config_path, platform_config_json.toPrettyString());
+      LinkPlatformConfig(config_to_link, platform_config_path);
    }
 }
 
@@ -388,7 +375,19 @@ void main(string[] args)
    const string default_platform_config_path = exe_dir ~ "/platform_config.json";
    string config_file_path = args[1];
   
-   //TODO: if first arg is -pLink than do that
+   if(config_file_path == "-pLink")
+   {
+      if(args.length > 1)
+      {
+         string config_to_link = args[2];
+         LinkPlatformConfig(config_to_link, default_platform_config_path);
+      }
+      else
+      {
+         writeln("Missing argument for option \"-pLink\"");
+      }
+      return;
+   }
  
    if(!exists(default_platform_config_path))
    {
@@ -481,7 +480,7 @@ BuildInfo GetBuildInfo(RoutineState state, bool silent_build)
    }
    
    JSONString build;
-   if(GetJSONString(state, "build", &build))
+   if(GetJSONDirectoryPath(state, "build", &build))
    {
       build_info.build_folder = build.get();
    }
@@ -1036,6 +1035,12 @@ void CallOperation(RoutineInfo routine_info, BuildInfo build_info, string[] para
       {
          config_file_path = routine_info.path;
       }
+   
+      if(!IsFilePath(config_file_path))
+      {
+         writeln("\"" ~ config_file_path ~ "\" Is not a valid file path");
+         return;
+      }
       
       LaunchConfig(default_platform_config_path,
                    config_file_path,
@@ -1301,77 +1306,106 @@ JSONValue GetRoutineJSON(RoutineInfo routine)
    return JSONValue.init;
 }
 
+JSONValue[string] language_json_cache; 
+
+bool InLangCache(string key)
+{
+   JSONValue *p = (key in language_json_cache);
+   
+   if(p == null)
+      return false;
+   
+   return true;
+}
+
 JSONValue GetLanguageJSON(string file_path, string language_name)
 {
-   if(!isFile(file_path))
+   string key = file_path ~ "?" ~ language_name;
+   
+   if(InLangCache(key))
    {
-      ExitError(file_path ~ " not found!");
+      return JSONValue(language_json_cache[key]);
    }
-   
-   JSONValue file_json = LoadJSONFile(file_path);
-   
-   if(HasJSON(file_json, "languages"))
+   else
    {
-      JSONValue languages_json = file_json["languages"];
-      
-      if(HasJSON(languages_json, language_name))
+      if(!isFile(file_path))
       {
-         JSONValue language_json = languages_json[language_name];
-         return language_json;
+         ExitError(file_path ~ " not found!");
       }
-   }
-   
-   if(HasJSON(file_json, "links"))
-   {
-      JSONValue links_json = file_json["links"];
       
-      string exe_path = thisExePath();
-      string exe_dir = GetFileDirectory(exe_path);
+      JSONValue file_json = LoadJSONFile(file_path);
       
-      if(links_json.type() == JSON_TYPE.ARRAY)
+      if(HasJSON(file_json, "languages"))
       {
-         Array!string linked_configs = Array!string();
+         JSONValue languages_json = file_json["languages"];
          
-         foreach(JSONValue json_value; links_json.array)
+         if(HasJSON(languages_json, language_name))
          {
-            if(json_value.type() == JSON_TYPE.STRING)
-            {
-               linked_configs.insert(json_value.str());
-            }
+            JSONValue language_json = languages_json[language_name];
+            return language_json;
          }
+      }
+      
+      if(HasJSON(file_json, "linked"))
+      {
+         JSONValue links_json = file_json["linked"];
          
-         foreach(string linked_config; linked_configs)
+         string exe_path = thisExePath();
+         string exe_dir = GetFileDirectory(exe_path);
+         
+         if(links_json.type() == JSON_TYPE.ARRAY)
          {
-            linked_config = linked_config.replace("\\", "/");
-         
-            if(linked_config.startsWith("./"))
-            {
-               linked_config = linked_config[2 .. $];
-            }
-            else if(linked_config.startsWith("/"))
-            {
-               linked_config = linked_config[1 .. $];
-            }
+            Array!string linked_configs = Array!string();
             
-            JSONValue linked_config_json = LoadJSONFile(exe_dir ~ "/" ~ linked_config);
-            
-            if(HasJSON(linked_config_json, "languages"))
+            foreach(JSONValue json_value; links_json.array)
             {
-               JSONValue languages_json = linked_config_json["languages"];
-         
-               if(HasJSON(languages_json, language_name))
+               if(json_value.type() == JSON_TYPE.STRING)
                {
-                  JSONValue language_json = languages_json[language_name];
-                  return language_json;
+                  linked_configs.insert(json_value.str());
+               }
+            }
+            
+            foreach(string linked_config; linked_configs)
+            {
+               linked_config = linked_config.replace("\\", "/");
+            
+               if(linked_config.startsWith("./"))
+               {
+                  linked_config = linked_config[2 .. $];
+               }
+               else if(linked_config.startsWith("/"))
+               {
+                  linked_config = linked_config[1 .. $];
+               }
+               
+               if(exists(exe_dir ~ "/" ~ linked_config))
+               {
+                  JSONValue linked_config_json = LoadJSONFile(exe_dir ~ "/" ~ linked_config);
+                  
+                  if(HasJSON(linked_config_json, "languages"))
+                  {
+                     JSONValue languages_json = linked_config_json["languages"];
+               
+                     if(HasJSON(languages_json, language_name))
+                     {
+                        JSONValue language_json = languages_json[language_name];
+                        language_json_cache[key] = language_json;
+                        return language_json;
+                     }
+                  }
+               }
+               else
+               {
+                  writeln("Invalid link \"" ~ exe_dir ~ "/" ~ linked_config ~ "\"");
                }
             }
          }
       }
+      
+      ExitError("Platform config missing for language \"" ~ language_name ~ "\"");
+      
+      return JSONValue.init; 
    }
-   
-   ExitError("Platform config missing for language \"" ~ language_name ~ "\"");
-   
-   return JSONValue.init; 
 }
 
 PlatformInfo GetHostInfo(string file_path, string language)
@@ -1738,6 +1772,11 @@ RoutineInfo MakeRoutine(string file_path,
    routine_info.directory = file_path[0 .. file_path.lastIndexOf("/") + 1];
    routine_info.platform_config_path = default_platform_config_path;
    
+   if(routine_info.directory.length == 0)
+   {
+      routine_info.directory = "./";
+   }
+   
    if(can_specify_platform_config)
    {
       JSONValue file_json = LoadJSONFile(file_path);
@@ -1942,6 +1981,12 @@ string RelativePath(string path, RoutineInfo routine)
    if(new_path.startsWith("./"))
       new_path = new_path[2 .. $];
       
+   if(!IsDirPath(routine.directory))
+   {
+      writeln(routine.directory);
+      assert(IsDirPath(routine.directory));
+   }
+   
    new_path = routine.directory ~ new_path;
       
    return new_path;
@@ -1949,15 +1994,7 @@ string RelativePath(string path, RoutineInfo routine)
 
 string FormatPath(string path)
 {
-   string new_path = path;
-   
-   new_path = new_path.replace("\\", "/");
-   
-   //TODO: directory detection
-   bool is_dir = false;
-   
-   if(is_dir && !new_path.endsWith("/"))
-      new_path = new_path ~ "/";
+   string new_path = path.replace("\\", "/");
    
    if(new_path.startsWith("~/"))
    {
@@ -2215,13 +2252,23 @@ void LoadStringArrayFromTag_internal(RoutineState state,
          
          if(condit_state)
          {
-				if((then_json.type() == JSON_TYPE.STRING) ||
-					(then_json.type() == JSON_TYPE.ARRAY))
+            if(then_json.type() == JSON_TYPE.ARRAY)
+            {
+               foreach(JSONValue array_element; then_json.array)
+               {
+                  if(array_element.type == JSON_TYPE.OBJECT)
+                  {
+                     LoadStringArrayFromTag_internal(state, array_element, sarray, replace_additions, type);
+                  }
+                  else if(array_element.type == JSON_TYPE.STRING)
+                  {
+                     InsertProcessedTags(sarray, state, array_element.str(), replace_additions, type);
+                  }
+               }
+            }
+				else if(then_json.type() == JSON_TYPE.STRING)
 				{
-            	JSONMapString(then_json, (string str, int i)
-            	{
-              		InsertProcessedTags(sarray, state, str, replace_additions, type);
-            	});
+               InsertProcessedTags(sarray, state, then_json.str(), replace_additions, type);
 				}
 				else if(then_json.type() == JSON_TYPE.OBJECT)
 				{
@@ -2556,11 +2603,6 @@ struct JSONString
    {
       return _val;
    }
-   
-   string getPath(RoutineInfo routine)
-   {
-      return PathF(_val, routine);
-   }
 }
 
 bool GetJSONString(RoutineState state, string var_name, JSONString *result)
@@ -2574,6 +2616,72 @@ bool GetJSONString(RoutineState state, string var_name, JSONString *result)
       result._val = LoadStringFromTag(state,
                                       var_json);
       return true;
+   }
+   
+   return false;
+}
+
+bool IsDirPath(string path)
+{
+   if(path.endsWith("/"))
+   {
+      return true;
+   }
+   
+   return false;
+}
+
+bool IsFilePath(string path)
+{
+   if(!path.endsWith("/"))
+   {
+      return true;
+   }
+   
+   return false;
+}
+
+bool GetJSONDirectoryPath(RoutineState state, string var_name, JSONString *result)
+{
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   
+   if(HasJSON(routine_json, var_name))
+   {
+      JSONValue var_json = routine_json[var_name];
+      string dir_path = FormatPath(LoadStringFromTag(state, var_json));
+      
+      if(IsDirPath(dir_path))
+      {
+         result._val = dir_path;
+         return true;
+      }
+      else
+      {
+         writeln("\"" ~ dir_path ~ "\" not a valid directory path!");
+      }
+   }
+   
+   return false;
+}
+
+bool GetJSONFilePath(RoutineState state, string var_name, JSONString *result)
+{
+   JSONValue routine_json = GetRoutineJSON(state.routine_info);
+   
+   if(HasJSON(routine_json, var_name))
+   {
+      JSONValue var_json = routine_json[var_name];
+      string dir_path = FormatPath(LoadStringFromTag(state, var_json));
+      
+      if(IsFilePath(dir_path))
+      {
+         result._val = dir_path;
+         return true;
+      }
+      else
+      {
+         writeln("\"" ~ dir_path ~ "\" not a valid file path!");
+      }
    }
    
    return false;

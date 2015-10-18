@@ -1,0 +1,183 @@
+{
+   "languages":
+   {
+      "C":
+      {
+         "commented_platforms":
+         [
+            "Linux", ["X86_64", "X86"]
+         ],
+         "commented_host": ["Linux", "X86_64"],
+         "platforms":
+         [
+            "Windows", ["X86_64", "X86"]
+         ],
+         "host": ["Windows", "X86_64"],
+         "sources": [ ".c" ],
+         "types":
+         {
+            "executable": 
+            {
+               "commented_endings": ".exe",
+               "endings": ".exe",
+               "commands":
+               [  
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "OS=Linux",
+                     "then":
+                     [
+                        {
+                           "if": "ARCH=X86",
+                           "then": 
+                           {
+                              "if": "OPT=true",
+                              "then": "gcc -m32 -O3 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]",
+                              "else": "gcc -m32 -O0 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]"
+                           }
+                        },
+                        {
+                           "if": "ARCH=X86_64",
+                           "then": 
+                           {
+                              "if": "OPT=true",
+                              "then": "gcc -m64 -O3 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]",
+                              "else": "gcc -m64 -O0 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]"
+                           }
+                        }
+                     ]
+                  },
+                  {
+                     "if": "OS=Windows",
+                     "then":
+                     [
+                        {
+                           "if": "ARCH=X86",
+                           "then": "vcvarsall x86"
+                        },
+                        {
+                           "if": "ARCH=X86_64",
+                           "then": "vcvarsall x86_amd64"
+                        },
+                        {
+                           "if": "OPT=true",
+                           "then": "cl /O2 /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
+                           "else": "cl /Od /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
+                        }
+                     ]
+                  }
+               ]
+            },
+            "dynamic": 
+            {
+               "commented_endings": ".so",
+               "endings": [".dll", ".lib"],
+               "commands":
+               [
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "OS=Linux",
+                     "then":
+                     [
+                        {
+                           "if": "ARCH=X86",
+                           "then":
+                           {
+                              "if": "OPT=true",
+                              "then": "gcc -shared -m32 -O3 -o [PROJECT_NAME].so -fPIC [SOURCES] [DEPENDENCIES]",
+                              "else": "gcc -shared -m32 -O0 -o [PROJECT_NAME].so -fPIC [SOURCES] [DEPENDENCIES]"
+                           }
+                        },
+                        {
+                           "if": "ARCH=X86_64",
+                           "then":
+                           {
+                              "if": "OPT=true",
+                              "then": "gcc -shared -m64 -O3 -o [PROJECT_NAME].so -fPIC [SOURCES] [DEPENDENCIES]",
+                              "else": "gcc -shared -m64 -O0 -o [PROJECT_NAME].so -fPIC [SOURCES] [DEPENDENCIES]"
+                           }
+                        }
+                     ]
+                  },
+                  {
+                     "if": "OS=Windows",
+                     "then":
+                     [
+                        {
+                           "if": "ARCH=X86",
+                           "then": "vcvarsall x86"
+                        },
+                        {
+                           "if": "ARCH=X86_64",
+                           "then": "vcvarsall x86_amd64"
+                        },
+                        "echo LIBRARY [PROJECT_NAME] > ./exports.def",
+                        "echo EXPORTS >> ./exports.def",
+                        "(for %a in ([VAR exports]) do ( echo \t %a >> ./exports.def )) 1> nul",
+                        {
+                           "if": "OPT=true",
+                           "then": "cl /O2 [SOURCES] /link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def [DEPENDENCIES]",
+                           "else": "cl /Od [SOURCES] /link /DLL /OUT:[PROJECT_NAME].dll /DEF:exports.def [DEPENDENCIES]"
+                        }
+                     ]
+                  }
+               ]
+            },
+            "static": 
+            {
+               "commented_endings": ".a",
+               "endings": ".lib",
+               "commands":
+               [
+                  "cd [BUILD_DIRECTORY]",
+                  {
+                     "if": "OS=Linux",
+                     "then":
+                     [
+                        {
+                           "if": "ARCH=X86_64",
+                           "then":
+                           {
+                              "if": "OPT=true",
+                              "then": "gcc -m64 -O3 -c [SOURCES]",
+                              "else": "gcc -m64 -O0 -c [SOURCES]"
+                           }
+                        }, 
+                        {
+                           "if": "ARCH=X86",
+                           "then":
+                           {
+                              "if": "OPT=true",
+                              "then": "gcc -m32 -O3 -c [SOURCES]",
+                              "else": "gcc -m32 -O0 -c [SOURCES]"
+                           }
+                        },
+                        "ar rcs [PROJECT_NAME].a *.o"
+                     ]
+                  },
+                  {
+                     "if": "OS=Windows",
+                     "then":
+                     [
+                        {
+                           "if": "ARCH=X86",
+                           "then": "vcvarsall x86"
+                        },
+                        {
+                           "if": "ARCH=X86_64",
+                           "then": "vcvarsall x86_amd64"
+                        },
+                        {
+                           "if": "OPT=true",
+                           "then": "cl /O2 /c [SOURCES]",
+                           "else": "cl /Od /c [SOURCES]"
+                        },
+                        "lib /out:[PROJECT_NAME].lib *.obj"
+                     ]
+                  }
+               ]
+            }
+         }
+      }
+   }
+}

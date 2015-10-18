@@ -4,7 +4,7 @@
    {
       "language": "C",
       "type": "dynamic",
-      "build" : "../dltest",
+      "build" : "../dltest/",
       "source": 
       [
          "../test/DLibrary.c",

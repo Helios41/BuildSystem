@@ -4,7 +4,7 @@
    {
       "language": "C",
       "type": "static",
-      "build": "../static_lib",
+      "build": "../static_lib/",
       "source": "../test/static_lib.c",
       "target": "all",
       "project": "static_lib",

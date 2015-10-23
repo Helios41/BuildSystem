@@ -25,7 +25,7 @@ TO DO:
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
 
    -util function for replacing builtins
-   -
+   -[ENDING C executable]
  
 BUGS:
    -crash if the output dir is a file
@@ -1420,7 +1420,18 @@ PlatformInfo GetHostInfo(string file_path, string language)
       
       if(host_json.type() == JSON_TYPE.ARRAY)
       {
-         if(host_json.array.length == 2)
+         if(host_json.array.length == 1)
+         {
+            if(host_json[0].type() == JSON_TYPE.STRING)
+               
+            {
+               PlatformInfo info;
+               info.OS = host_json[0].str();
+               info.arch = host_json[0].str();
+               return info;
+            }
+         }
+         else if(host_json.array.length == 2)
          {
             if((host_json[0].type() == JSON_TYPE.STRING) &&
                (host_json[1].type() == JSON_TYPE.STRING))
@@ -1431,6 +1442,13 @@ PlatformInfo GetHostInfo(string file_path, string language)
                return info;
             }
          }
+      }
+      else if(host_json.type() == JSON_TYPE.STRING)
+      {
+         PlatformInfo info;
+         info.OS = host_json.str();
+         info.arch = host_json.str();
+         return info;
       }
    }
    
@@ -1576,6 +1594,14 @@ string[int][string] GetAvailablePlatforms(string file_path, string language)
       
       if(platforms_json.type() == JSON_TYPE.ARRAY)
       {
+         if(platforms_json.array.length == 1)
+         {
+            if(platforms_json[0].type == JSON_TYPE.STRING)
+            {
+               platforms[platforms_json[0].str()][0] = platforms_json[0].str();
+            }
+         }
+      
          string current_platform = "";
          
          foreach(JSONValue platform_json; platforms_json.array)
@@ -1597,6 +1623,10 @@ string[int][string] GetAvailablePlatforms(string file_path, string language)
                current_platform = "";
             }
          }
+      }
+      else if(platforms_json.type() == JSON_TYPE.STRING)
+      {
+         platforms[platforms_json.str()][0] = platforms_json.str();
       }
    }
    
@@ -2968,7 +2998,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
             
             if(source.filtered)
             {
-               src_files = CopyMatchingItems(PathF(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending);               
+               src_files = CopyMatchingItems(PathF(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending, int.max);               
             }
             else
             {
@@ -3185,6 +3215,7 @@ void Build(string output_folder, string build_dir, RoutineState state)
       command_batch = command_batch ~ command_and ~ begin_bracket ~ command ~ end_bracket;
    }
    
+   //TODO: if no commands are available than this crashes
    command_batch = begin_bracket ~ command_batch[command_and.length .. $] ~ end_bracket;
    
    if(state.build_info.silent_build)

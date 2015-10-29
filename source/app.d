@@ -774,13 +774,15 @@ void ExecutePerOperations(string output_directory, RoutineState state)
 {
    JSONValue routine_json = GetRoutineJSON(state.routine_info);
    string version_string = GetVersionString(state.version_info);
+   string output_file_name = state.build_info.project_name ~ 
+                             (state.version_info.is_versioned ? (state.version_info.breakS ~ version_string) : ""); 
    
    string temp_dir = state.routine_info.directory ~ state.build_info.project_name ~ "_" ~ state.routine_info.name ~ "_" ~ randomUUID().toString();
    mkdirRecurse(temp_dir);
    
    if(!HasJSON(routine_json, "per-operations"))
    {
-      Build(output_directory, temp_dir, state);
+      Build(output_directory, temp_dir, state, output_file_name);
       static if(delete_temp_dir) { rmdirRecurse(temp_dir); }
       return;
    }
@@ -794,6 +796,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
       
       string[string] replace_additions;
       replace_additions["[OUTPUT_DIRECTORY]"] = output_directory;
+      replace_additions["[OUTPUT_FILE_NAME]"] = output_file_name;
       replace_additions["[BUILD_DIRECTORY]"] = temp_dir;
       
       CommandInformation[] commands = LoadCommandsFromTag(state, operations_json, replace_additions);
@@ -809,7 +812,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
       if(!specifies_build)
       {
          has_built = true;
-         Build(output_directory, temp_dir, state);
+         Build(output_directory, temp_dir, state, output_file_name);
       }
    
       string last_operation_token = "";
@@ -822,7 +825,7 @@ void ExecutePerOperations(string output_directory, RoutineState state)
          {
             has_built = true;
             WriteMsg("\tBuilding...");
-            Build(output_directory, temp_dir, state);
+            Build(output_directory, temp_dir, state, output_file_name);
          }
          else
          {
@@ -1752,9 +1755,55 @@ Variable[] GetVariables(RoutineState state,
    return vars;
 }
 
+const string ending_decl_begin = "[ENDING ";
+const string ending_decl_end = "]";
+
+Variable[] GetEndings(RoutineState state,
+                      string tag_str)
+{
+   int var_count = cast(int) min(tag_str.count(ending_decl_begin),
+                       	     tag_str.count(ending_decl_end));
+   
+   Variable[] endings = new Variable[var_count];
+   int str_index = 0;
+   
+   for(int i = 0; i < var_count; ++i)
+   {
+      int var_index = cast(int) tag_str.indexOf(ending_decl_begin, str_index);
+      int var_end_index = cast(int) tag_str.indexOf(ending_decl_end, var_index);
+      string var_decl = tag_str[var_index .. var_end_index + 1];
+      
+      if(var_decl.count(" ") != 1)
+      {
+         writeln("------------------");
+         writeln("Invalid ENDING tag");
+         writeln(var_decl);
+         writeln("------------------");
+         return new Variable[0];
+      }
+      
+      string language_name = var_decl[0 .. var_decl.indexOf(" ")];
+      string build_type = var_decl[var_decl.indexOf(" ") + 1 .. $];
+      
+      string[] lang_endings = GetLanguageFileEndings(state.routine_info.platform_config_path, language_name, build_type, state);
+      
+      Variable ending;
+      ending.declare = var_decl;
+      ending.value = lang_endings[0 .. 1];
+      ending.location = var_index;
+      ending.length = cast(int) var_decl.length;
+      
+      str_index = var_end_index;
+      endings[i] = ending;
+   }
+   
+   return endings;
+}
+
 const string fread_decl_begin = "[fread ";
 const string fread_decl_end = "]";
 
+//TODO: multiple freads in one line cause error
 FileInput[] GetFileInputs(RoutineState state, string tag_str)
 {
    int fread_count = cast(int) min(tag_str.count(fread_decl_begin),
@@ -2014,7 +2063,7 @@ string RelativePath(string path, RoutineInfo routine)
    if(!IsDirPath(routine.directory))
    {
       writeln(routine.directory);
-      assert(IsDirPath(routine.directory));
+      assert(false);
    }
    
    new_path = routine.directory ~ new_path;
@@ -2070,6 +2119,17 @@ ProcessedTag ProcessTag(RoutineState state,
    
    Array!string tag_list = Array!string();
    int str_index = 0;
+   
+   foreach(Variable ending; GetEndings(state, new_str))
+   {
+      tag_list.insert(new_str[0 .. ending.location]);
+      str_index = ending.location + ending.length;
+      
+      foreach(string var_value; ending.value)
+      {
+         tag_list.insert(var_value);
+      }
+   }
    
    foreach(Variable var; GetVariables(state, new_str))
    {
@@ -2292,6 +2352,7 @@ void LoadStringArrayFromTag_internal(RoutineState state,
                   }
                   else if(array_element.type == JSON_TYPE.STRING)
                   {
+                     writeln("Line 2355: ", array_element.str());
                      InsertProcessedTags(sarray, state, array_element.str(), replace_additions, type);
                   }
                }
@@ -2804,16 +2865,39 @@ string[] CopyItem(string source, string dest)
                mkdirRecurse(dest);
                
             Array!string result_list = Array!string();
-               
+            
+            /*
+            if(source == "./../Source/Dashboard/")
+            {
+               //writeln(dirEntries(source, SpanMode.breadth));
+            }
+            */
+              
             foreach(DirEntry e; dirEntries(source, SpanMode.depth))
             {
                if(e.isFile())
                {
+                  /*
+                  if(source == "./../Source/Dashboard/")
+                  {
+                     writeln(e);
+                  }
+                  */
+                  
                   string rsource = source ~ (source.endsWith("/") ? "" : "/");
                   string dest_name = dest.replace("\\", "/") ~ e.name().replace("\\", "/").replace(rsource, "");
                   
                   copy(e.name, dest ~ e.name().replace(source, ""));      
                   result_list.insert(dest_name);
+               }
+               else if(e.isDir())
+               {
+                  string[] results = CopyItem(e.name, dest ~ "/" ~ e.name ~ "/");
+                  writeln("IsDir: ", e.name, "\n", results);
+                
+                  foreach(string res; results)
+                     result_list.insert(res);
+                     
                }
             }
             
@@ -2968,11 +3052,9 @@ bool IsValid(T)(string str)
    } catch(ConvException e) { return false; }
 }
 
-void Build(string output_folder, string build_dir, RoutineState state)
+void Build(string output_folder, string build_dir, RoutineState state, string output_file_name)
 {
    string version_string = GetVersionString(state.version_info);
-   string output_file_name = state.build_info.project_name ~ 
-                             (state.version_info.is_versioned ? (state.version_info.breakS ~ version_string) : "");
   
    if(!exists(PathF(output_folder, state.routine_info)))
    {
@@ -3158,39 +3240,6 @@ void Build(string output_folder, string build_dir, RoutineState state)
    replace_additions["[SOURCES]"] = sources;
    replace_additions["[DEPENDENCIES]"] = dependencies;
    replace_additions["[OUTPUT_FILE_NAME]"] = output_file_name;  
- 
-   //TODO: allow platform config to execute rebuild operations along with the regular cmd commands
-   /*
-   CommandInformation[] commands = LoadCommandsFromTag(state,
-                                                       GetLanguageOperationsTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),
-                                                       replace_additions);
-   
-   void delegate(RoutineState state)[string] extra_operations;
-      
-   extra_operations["build"] = delegate(RoutineState p_state)
-   {
-      string[] commands = LoadStringArrayFromTag(p_state,
-                                                 GetLanguageCommandTag(p_state.routine_info.platform_config_path, p_state.build_info.language, p_state.build_info.type),
-                                                 TagType.String,
-                                                 replace_additions);
-   
-      foreach(string command; commands)
-      {                                   
-         command_batch = command_batch ~ " && ( " ~ command ~ " )";
-      }
-      
-      command_batch = "(" ~ command_batch[4 .. $] ~ ")";
-      
-      if(p_state.build_info.silent_build)
-      {
-         command_batch = pipeToNUL(command_batch);
-      }
-      
-      system(toStringz(command_batch));
-   };
-   
-   ExecuteOperation();
-   */
    
    string[] commands = LoadStringArrayFromTag(state,
                                               GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),
@@ -3215,8 +3264,10 @@ void Build(string output_folder, string build_dir, RoutineState state)
       command_batch = command_batch ~ command_and ~ begin_bracket ~ command ~ end_bracket;
    }
    
-   //TODO: if no commands are available than this crashes
-   command_batch = begin_bracket ~ command_batch[command_and.length .. $] ~ end_bracket;
+   if(command_batch.length > command_and.length)
+   {
+      command_batch = begin_bracket ~ command_batch[command_and.length .. $] ~ end_bracket;
+   }
    
    if(state.build_info.silent_build)
    {

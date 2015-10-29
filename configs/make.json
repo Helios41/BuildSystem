@@ -39,7 +39,8 @@
          },
          ["fwrite", "../testbuild/test.txt", "-append", "TEST "],
          ["print", "[fread ../testbuild/test.txt]"],
-         ["call", "=", "SayHi"]
+         ["call", "=", "SayHi"],
+         ["print", "Executable ending on [OS_NAME] is [ENDING C executable]"]
       ],
       "per-operations":
       [

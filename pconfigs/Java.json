@@ -20,7 +20,6 @@
                         "cd [BUILD_DIRECTORY]",
                         "echo javac [SOURCES] [DEPENDENCIES]",
                         "echo Manifest-Version: 1.0 >> ./Manifest.txt",
-                        "echo \"Created-By: 1.7.0_06 (Oracle Corporation)\" >> ./Manifest.txt",
                         "echo Main-Class: [MainClass] >> ./Manifest.txt",
                         "jar cfm [PROJECT_NAME].jar Manifest.txt *.class"
                      ],

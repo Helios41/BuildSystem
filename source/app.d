@@ -2119,13 +2119,18 @@ ProcessedTag ProcessTag(RoutineState state,
    
    foreach(Variable ending; GetEndings(state, new_str))
    {
-      tag_list.insert(new_str[0 .. ending.location]);
+      string pre_value = new_str[0 .. ending.location];
       str_index = ending.location + ending.length;
+      
+      if(pre_value.length > 0)
+         tag_list.insert(pre_value);
       
       foreach(string var_value; ending.value)
       {
          tag_list.insert(var_value);
       }
+      
+      writeln(tag_list[0 .. $]);
    }
    
    foreach(Variable var; GetVariables(state, new_str))
@@ -2492,6 +2497,7 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
       
          if(json_value.type() == JSON_TYPE.STRING)
          {
+            //TODO: Process tag!
             fdesc.path = json_value.str();
             fdesc.filtered = false;
          }

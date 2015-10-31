@@ -71,8 +71,7 @@
             "if": "OS=Linux",
             "then": "/lib/i386-linux-gnu/libdl.so.2"
          },
-         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".lib"],
-         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", ".a"]
+         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", "[ENDING C static]"]
       ],
       "WindowsDeps":
       [

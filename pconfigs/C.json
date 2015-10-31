@@ -70,8 +70,8 @@
                         },
                         {
                            "if": "OPT=true",
-                           "then": "cl %rebuild_c_defines% /O2 /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
-                           "else": "cl %rebuild_c_defines% /Od /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
+                           "then": "cl /O2 /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
+                           "else": "cl /Od /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
                         },
                         "set rebuild_c_defines="
                      ]

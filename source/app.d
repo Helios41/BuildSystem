@@ -17,15 +17,10 @@ TO DO:
    -ability to reference dependencies as a var
    -patch all functions that load data structures to be able to load them from vars
    
-   -allow defines to be set as variable in config (C & C++)
-   
    -Load all file paths using one common util function
    -Enforce a path naming standard, convert to this standard in the util function
    
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
-
-   -util function for replacing builtins
-   -[ENDING C executable]
  
 BUGS:
    -crash if the output dir is a file
@@ -50,6 +45,7 @@ NOTES:
 
 TODO:
 	-binaries dont have permissions (try to chmod?)
+   -copying files removes permissions
 	-
    -
 */
@@ -1771,7 +1767,8 @@ Variable[] GetEndings(RoutineState state,
    {
       int var_index = cast(int) tag_str.indexOf(ending_decl_begin, str_index);
       int var_end_index = cast(int) tag_str.indexOf(ending_decl_end, var_index);
-      string var_decl = tag_str[var_index .. var_end_index + 1];
+      string var_decl = tag_str[(var_index + ending_decl_begin.length) .. (var_end_index - ending_decl_end.length + 1)];
+      string full_decl = tag_str[var_index .. var_end_index + 1];
       
       if(var_decl.count(" ") != 1)
       {
@@ -1788,10 +1785,10 @@ Variable[] GetEndings(RoutineState state,
       string[] lang_endings = GetLanguageFileEndings(state.routine_info.platform_config_path, language_name, build_type, state);
       
       Variable ending;
-      ending.declare = var_decl;
-      ending.value = lang_endings[0 .. 1];
+      ending.declare = full_decl;
+      ending.value = lang_endings;
       ending.location = var_index;
-      ending.length = cast(int) var_decl.length;
+      ending.length = cast(int) full_decl.length;
       
       str_index = var_end_index;
       endings[i] = ending;
@@ -2352,6 +2349,7 @@ void LoadStringArrayFromTag_internal(RoutineState state,
                   }
                   else if(array_element.type == JSON_TYPE.STRING)
                   {
+                     //TODO: fix bug so we can get rid of this
                      writeln("Line 2355: ", array_element.str());
                      InsertProcessedTags(sarray, state, array_element.str(), replace_additions, type);
                   }
@@ -2866,24 +2864,10 @@ string[] CopyItem(string source, string dest)
                
             Array!string result_list = Array!string();
             
-            /*
-            if(source == "./../Source/Dashboard/")
-            {
-               //writeln(dirEntries(source, SpanMode.breadth));
-            }
-            */
-              
             foreach(DirEntry e; dirEntries(source, SpanMode.depth))
             {
                if(e.isFile())
                {
-                  /*
-                  if(source == "./../Source/Dashboard/")
-                  {
-                     writeln(e);
-                  }
-                  */
-                  
                   string rsource = source ~ (source.endsWith("/") ? "" : "/");
                   string dest_name = dest.replace("\\", "/") ~ e.name().replace("\\", "/").replace(rsource, "");
                   

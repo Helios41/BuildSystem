@@ -28,12 +28,16 @@
                      "then":
                      [
                         {
+                           "if": "HASVAR(Defines)",
+                           "then": "echo define not implemented yet"
+                        },
+                        {
                            "if": "ARCH=X86",
                            "then": 
                            {
                               "if": "OPT=true",
-                              "then": "gcc -m32 -O3 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]",
-                              "else": "gcc -m32 -O0 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]"
+                              "then": "gcc -m32 -O3 -o ${rebuild_c_defines} [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]",
+                              "else": "gcc -m32 -O0 -o ${rebuild_c_defines} [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]"
                            }
                         },
                         {
@@ -41,16 +45,21 @@
                            "then": 
                            {
                               "if": "OPT=true",
-                              "then": "gcc -m64 -O3 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]",
-                              "else": "gcc -m64 -O0 -o [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]"
+                              "then": "gcc -m64 -O3 -o ${rebuild_c_defines} [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]",
+                              "else": "gcc -m64 -O0 -o ${rebuild_c_defines} [PROJECT_NAME].exe [SOURCES] [DEPENDENCIES]"
                            }
-                        }
+                        },
+                        "unset rebuild_c_defines"
                      ]
                   },
                   {
                      "if": "OS=Windows",
                      "then":
                      [
+                        {
+                           "if": "HASVAR(Defines)",
+                           "then": "echo define not implemented yet"
+                        },
                         {
                            "if": "ARCH=X86",
                            "then": "vcvarsall x86"
@@ -61,9 +70,10 @@
                         },
                         {
                            "if": "OPT=true",
-                           "then": "cl /O2 /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
-                           "else": "cl /Od /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
-                        }
+                           "then": "cl %rebuild_c_defines% /O2 /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
+                           "else": "cl %rebuild_c_defines% /Od /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
+                        },
+                        "set rebuild_c_defines="
                      ]
                   }
                ]

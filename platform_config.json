@@ -1,9 +1,8 @@
 {
     "linked": [
-        "placeholder",
         ".\/pconfigs\/C.json",
-        ".\/pconfigs\/D.json",
         ".\/pconfigs\/C++.json",
+        ".\/pconfigs\/D.json",
         ".\/pconfigs\/Java.json"
     ]
 }

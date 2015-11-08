@@ -18,10 +18,13 @@
                      "then":
                      [
                         "cd [BUILD_DIRECTORY]",
-                        "echo javac [SOURCES] [DEPENDENCIES]",
+                        "javac [SOURCES] [DEPENDENCIES]",
                         "echo Manifest-Version: 1.0 >> ./Manifest.txt",
-                        "echo Main-Class: [MainClass] >> ./Manifest.txt",
-                        "jar cfm [PROJECT_NAME].jar Manifest.txt *.class"
+                        "echo Main-Class: [VAR MainClass] >> ./Manifest.txt",
+                        "dir /s /b /o:gn *.class",
+                        "set REBUILD_Classes=test",
+                        "echo %REBUILD_Classes%",
+                        "jar cfm [PROJECT_NAME].jar Manifest.txt %REBUILD_Classes%"
                      ],
                      "else": "echo MainClass missing"
                   }

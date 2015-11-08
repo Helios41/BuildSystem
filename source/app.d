@@ -20,6 +20,8 @@ TO DO:
    -Load all file paths using one common util function
    -Enforce a path naming standard, convert to this standard in the util function
    
+   -CopyItem doesnt do sub-dirs correctly
+   
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
  
 BUGS:
@@ -204,6 +206,13 @@ const bool default_build_silent = false;
 
 void LinkPlatformConfig(string config_to_link, string platform_config_path)
 {
+   const string default_platform_config_path = GetFileDirectory(thisExePath()) ~ "/platform_config.json";
+   if(!exists(default_platform_config_path))
+   {
+      writeln("Default platform config file missing! Generating empty json!");
+      std.file.write(default_platform_config_path, "{\n}");
+   }
+
    JSONValue platform_config_json = LoadJSONFile(platform_config_path);
    
    if(HasJSON(platform_config_json, "linked"))
@@ -239,9 +248,9 @@ void LinkPlatformConfig(string config_to_link, string platform_config_path)
    }
    else
    {
-      platform_config_json.object["linked"] = JSONValue(["placeholder"]); 
+      writeln("Linking ", config_to_link, " to ", platform_config_path);
+      platform_config_json.object["linked"] = JSONValue([config_to_link]); 
       std.file.write(platform_config_path, platform_config_json.toPrettyString());
-      LinkPlatformConfig(config_to_link, platform_config_path);
    }
 }
 
@@ -2035,17 +2044,17 @@ bool HandleConditional(RoutineState state,
    return false;
 }
 
-string CombindStrings(string[] strings)
+string CombindStrings(string[] strings, string splitter)
 {
    string result = "";
 
    foreach(string str; strings)
    {
-      result = result ~ " " ~ str;
+      result = result ~ splitter ~ str;
    }
    
-   if(result.length > 1)
-      return result[1 .. $];
+   if(strings.length > 0)
+      return result[splitter.length .. $];
     
    return "";
 }
@@ -2135,8 +2144,11 @@ ProcessedTag ProcessTag(RoutineState state,
    
    foreach(Variable var; GetVariables(state, new_str))
    {
-      tag_list.insert(new_str[0 .. var.location]);
+      string pre_value = new_str[0 .. var.location];
       str_index = var.location + var.length;
+      
+      if(pre_value.length > 0)
+         tag_list.insert(pre_value);
       
       foreach(string var_value; var.value)
       {
@@ -2169,7 +2181,8 @@ ProcessedTag ProcessTag(RoutineState state,
    
    if(tag_type == TagType.String)
    {
-      result.str = CombindStrings(result.array);
+      //TODO: does this always want to be ""
+      result.str = CombindStrings(result.array, "");
    }
       
    return result;
@@ -3059,10 +3072,11 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
    if(HasJSON(routine_json, "source"))
    {
       FileDescription[] source_folders = LoadFileDescriptionsFromTag(state, routine_json["source"]);
+      writeln(source_folders);
       
       foreach(FileDescription source; source_folders)
       {
-         WriteMsg("Src " ~ PathF(source.path, state.routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
+         writeln("Src " ~ PathF(source.path, state.routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
          
          if(source.type == FileType.Local)
          {
@@ -3263,8 +3277,7 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
    {
       command_batch = pipeToNUL(command_batch);
    }
- 
-   //Write Command Batch To STDOUT 
+   
 	WriteMsg(command_batch); 
    system(toStringz(command_batch));
    

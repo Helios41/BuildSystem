@@ -12,21 +12,13 @@ import std.container;
 import std.datetime;
 
 /**
-TO DO:   
-   -ability to load multiple file descriptions from a conditional
-   -ability to reference dependencies as a var
-   -patch all functions that load data structures to be able to load them from vars
-   
-   -Load all file paths using one common util function
-   -Enforce a path naming standard, convert to this standard in the util function
-   
-   -CopyItem doesnt do sub-dirs correctly
-   
+TO DO:
+   -prevent modification of output dir (eg. set output dir as file)?
+   -prevent copy from wiping file permissions on *nix
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
+   -java pconfig still doesn't work
  
 BUGS:
-   -crash if the output dir is a file
-   -as a source this works "../Source/Accel/" but this doesnt "../Source/Accel" 
    -cant fread a file right after fwrite
 	-
    
@@ -35,6 +27,8 @@ NOTES:
    -Is setting the platform to the host for the regular operations the right thing to do?
    -CopyFolderContents -> CopyMatchingItems (copy files in subfolders & keep the subfolders)
    -["copy", "../example/Example.sol", "[OUTPUT_DIRECTORY]"] causes the output dir to become a file
+   -The output directory is created in Build
+   -copy creates dest folder if needed
 */
 
 /**
@@ -47,8 +41,6 @@ NOTES:
 
 TODO:
 	-binaries dont have permissions (try to chmod?)
-   -copying files removes permissions
-	-
    -
 */
 
@@ -89,6 +81,55 @@ void Breakpoint(string text = "")
    catch(Exception e)
    {
       writeln(e.text);
+   }
+}
+
+string SFileReadText(string path)
+{
+   try
+   {
+      return std.file.readText(path);
+   }
+   catch(Exception e)
+   {
+      writeln("Error On File Read:\n" ~ e.text);
+      return "";
+   }
+}
+
+void SFileWrite(string path, string contents)
+{
+   try
+   {
+      std.file.write(path, contents);
+   }
+   catch(Exception e)
+   {
+      writeln("Error On File Write:\n" ~ e.text);
+   }
+}
+
+void SFileCopy(string source, string dest)
+{
+   try
+   {
+      std.file.copy(source, dest, std.file.PreserveAttributes.yes);
+   }
+   catch(Exception e)
+   {
+      writeln("Error On File Copy:\n" ~ e.text);
+   }
+}
+
+void SFileDelete(string path)
+{
+   try
+   {
+      std.file.remove(path);
+   }
+   catch(Exception e)
+   {
+      writeln("Error On File Delete:\n" ~ e.text);
    }
 }
 
@@ -210,7 +251,7 @@ void LinkPlatformConfig(string config_to_link, string platform_config_path)
    if(!exists(default_platform_config_path))
    {
       writeln("Default platform config file missing! Generating empty json!");
-      std.file.write(default_platform_config_path, "{\n}");
+      SFileWrite(default_platform_config_path, "{\n}");
    }
 
    JSONValue platform_config_json = LoadJSONFile(platform_config_path);
@@ -243,14 +284,14 @@ void LinkPlatformConfig(string config_to_link, string platform_config_path)
          }
          
          platform_config_json["linked"] = linked_json;
-         std.file.write(platform_config_path, platform_config_json.toPrettyString());
+         SFileWrite(platform_config_path, platform_config_json.toPrettyString());
       }
    }
    else
    {
       writeln("Linking ", config_to_link, " to ", platform_config_path);
       platform_config_json.object["linked"] = JSONValue([config_to_link]); 
-      std.file.write(platform_config_path, platform_config_json.toPrettyString());
+      SFileWrite(platform_config_path, platform_config_json.toPrettyString());
    }
 }
 
@@ -397,7 +438,7 @@ void main(string[] args)
    if(!exists(default_platform_config_path))
    {
       writeln("Default platform config file missing! Generating empty json!");
-      std.file.write(default_platform_config_path, "{\n}");
+      SFileWrite(default_platform_config_path, "{\n}");
       return;
    }
       
@@ -630,7 +671,7 @@ VersionInfo GetVersionInfo(RoutineState state, VersionType version_type)
          new_file_json[routine_name]["version"][3] = version_info.appended;
       }
       
-      std.file.write(new_config_path, new_file_json.toPrettyString());
+      SFileWrite(new_config_path, new_file_json.toPrettyString());
    }
    
    return *version_info;
@@ -1072,9 +1113,9 @@ void ReplaceOperation(RoutineInfo routine_info, string[] params)
       foreach(string file_name; params[2 .. $])
       {
          string file_path = PathF(file_name, routine_info);
-         string file_contents = readText(file_path);
+         string file_contents = SFileReadText(file_path);
          file_contents = file_contents.replace(params[0], params[1]);
-         std.file.write(file_path, file_contents);
+         SFileWrite(file_path, file_contents);
       }
    }
 }
@@ -1186,13 +1227,13 @@ void FileWriteOperation(RoutineInfo routine_info, string[] params)
       if(append && exists(file_path))
       {
          WriteMsg("Append To " ~ file_path);
-         string file_contents = readText(file_path);
-         std.file.write(file_path, file_contents ~ to_write);
+         string file_contents = SFileReadText(file_path);
+         SFileWrite(file_path, file_contents ~ to_write);
       }
       else
       {
          WriteMsg("Write To " ~ file_path);
-         std.file.write(file_path, to_write);
+         SFileWrite(file_path, to_write);
       }
    }
 }
@@ -1269,11 +1310,11 @@ VersionInfo UpdateVersions(RoutineInfo routine, VersionInfo version_info)
       
       if(routine.path.endsWith(".new"))
       {
-         std.file.write(routine.path, file_json.toPrettyString());
+         SFileWrite(routine.path, file_json.toPrettyString());
       }
       else
       {
-         std.file.write(routine.path ~ ".new", file_json.toPrettyString());
+         SFileWrite(routine.path ~ ".new", file_json.toPrettyString());
       }
    }
    
@@ -1284,7 +1325,7 @@ JSONValue LoadJSONFile(string path)
 {
    try
    {
-      string json_text = readText(path);
+      string json_text = SFileReadText(path);
       JSONValue json_value = parseJSON(json_text);
       return json_value;
    }
@@ -1833,7 +1874,7 @@ FileInput[] GetFileInputs(RoutineState state, string tag_str)
       {
          if(isFile(file_path))
          {
-            freads[i].value = std.file.readText(file_path);
+            freads[i].value = SFileReadText(file_path);
             continue;
          }
       }
@@ -2367,8 +2408,6 @@ void LoadStringArrayFromTag_internal(RoutineState state,
                   }
                   else if(array_element.type == JSON_TYPE.STRING)
                   {
-                     //TODO: fix bug so we can get rid of this
-                     writeln("Line 2355: ", array_element.str());
                      InsertProcessedTags(sarray, state, array_element.str(), replace_additions, type);
                   }
                }
@@ -2401,6 +2440,8 @@ void LoadStringArrayFromTag_internal(RoutineState state,
          }
       }
    }
+   
+   //writeln((*sarray)[]);
 }
 
 string[] LoadStringArrayFromTag(RoutineState state,
@@ -2433,6 +2474,7 @@ string[] LoadStringArrayFromTag(RoutineState state,
       InsertProcessedTags(&sarray, state, json.str(), replace_additions, type);
    }
    
+   //writeln(sarray[]);
    if(sarray.length > 0)
    {
       string[] output = new string[sarray.length];
@@ -2848,90 +2890,18 @@ bool GetJSONStringArray(RoutineState state, string var_name, JSONStringArray *re
    return false;
 }
 
-string[] CopyItem(string source, string dest)
-{
-   source = source.replace("\\", "/");
-   dest = dest.replace("\\", "/");
-   
-   try
-   {
-      if(exists(source))
-      {
-         if(isFile(source))
-         {
-            string dest_directory = GetFileDirectory(dest);
-            
-            if(!exists(dest_directory))   
-               mkdirRecurse(dest_directory);
-            
-            if(dest.endsWith("/"))
-            {
-               dest = dest ~ GetFileName(source);
-            }
-            
-            copy(source, dest, PreserveAttributes.no);
-            
-            string[] result = new string[1];
-            result[0] = dest;
-            
-            return result;
-         }
-         else if(isDir(source))
-         {
-            if(!exists(dest))   
-               mkdirRecurse(dest);
-               
-            Array!string result_list = Array!string();
-            
-            foreach(DirEntry e; dirEntries(source, SpanMode.depth))
-            {
-               if(e.isFile())
-               {
-                  string rsource = source ~ (source.endsWith("/") ? "" : "/");
-                  string dest_name = dest.replace("\\", "/") ~ e.name().replace("\\", "/").replace(rsource, "");
-                  
-                  copy(e.name, dest ~ e.name().replace(source, ""));      
-                  result_list.insert(dest_name);
-               }
-               else if(e.isDir())
-               {
-                  string[] results = CopyItem(e.name, dest ~ "/" ~ e.name ~ "/");
-                  writeln("IsDir: ", e.name, "\n", results);
-                
-                  foreach(string res; results)
-                     result_list.insert(res);
-                     
-               }
-            }
-            
-            string[] result = new string[result_list.length];
-            int i = 0;
-            
-            foreach(string str; result_list)
-            {
-               result[i++] = str;
-            }
-            
-            return result;
-         }
-      }
-   } catch {}
-   
-   return new string[0];
-}
-
 void CopyMatchingItems_internal(string source, string destination, string begining, string ending, int depth, Array!string *result)
 {
    source = source.replace("\\", "/");
    destination = destination.replace("\\", "/");
 
-   if(!destination.endsWith("/"))
-   {
-      destination = destination ~ "/";
-   }
-   
    if(isDir(source))
    {
+      if(!destination.endsWith("/"))
+      {
+         destination = destination ~ "/";
+      }
+   
       foreach(DirEntry e; dirEntries(source, SpanMode.shallow))
       {
          string entry_path = e.name().replace(source, "");
@@ -2950,14 +2920,18 @@ void CopyMatchingItems_internal(string source, string destination, string begini
                mkdirRecurse(destination);
          
             string rsource = source ~ (source.endsWith("/") ? "" : "/");
-            string[] copied_items = CopyItem(e.name().replace("\\", "/"), destination ~ e.name().replace("\\", "/").replace(rsource, ""));
-            
-            foreach(string copied_item; copied_items)
-            {
-               result.insert(copied_item);
-            }
+            SFileCopy(e.name().replace("\\", "/"), destination ~ e.name().replace("\\", "/").replace(rsource, ""));
+            result.insert(destination ~ e.name().replace("\\", "/").replace(rsource, ""));
          }
       }
+   }
+   else if(isFile(source))
+   {
+      string dest_folder = destination[0 .. destination.lastIndexOf("/")];
+      if(!exists(dest_folder))
+         mkdirRecurse(dest_folder);
+      
+      SFileCopy(source, destination);
    }
 }
 
@@ -2979,22 +2953,9 @@ string[] CopyMatchingItems(string source, string destination, string begining = 
    return result;
 }
 
-void DeleteItem(string path)
+string[] CopyItem(string source, string dest)
 {
-   try
-   {
-      if(exists(path))
-      {
-         if(isFile(path))
-         {
-            remove(path);
-         }
-         else if(isDir(path))
-         {
-            rmdirRecurse(path);
-         }
-      }
-   } catch {} 
+   return CopyMatchingItems(source, dest, "", "", int.max);
 }
 
 void DeleteMatchingItems_internal(string path, string begining, string ending, int depth)
@@ -3014,8 +2975,12 @@ void DeleteMatchingItems_internal(string path, string begining, string ending, i
          }
          
          if(e.isFile() && entry_path.startsWith(begining) && entry_path.endsWith(ending))
-            DeleteItem(e.name());
+            SFileDelete(e.name());
       }
+   }
+   else if(isFile(path))
+   {
+      SFileDelete(path);
    }
 }
 
@@ -3025,6 +2990,11 @@ void DeleteMatchingItems(string path, string begining = "", string ending = "", 
    {
       DeleteMatchingItems_internal(path, begining, ending, depth);
    } catch {}
+}
+
+void DeleteItem(string path)
+{
+   DeleteMatchingItems(path, "", "", int.max);
 }
 
 string pipeToNUL(string str)
@@ -3142,6 +3112,7 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
    if(HasJSON(routine_json, "dependencies"))
    {
       FileDescription[] dependency_items = LoadFileDescriptionsFromTag(state, routine_json["dependencies"]);
+      //writeln(dependency_items);
       
       foreach(FileDescription dep; dependency_items)
       {
@@ -3183,7 +3154,20 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
                WriteMsg("LDep " ~ dep.path);
                
                if(!dependencies.canFind(" " ~ dep.path))
+               {
                   dependencies = dependencies ~ " " ~ dep.path;
+                  
+                  if((dep.ending != "") && dep.filtered)
+                  {
+                     /**
+                        Ok, so this is a total hack and i intend on someday fixing it,
+                        which may entail totally changing the syntax of the file descriptions,
+                        but this is a bug fix for the fact that ["User32.lib", "Gdi32.lib"] is
+                        treaded as if "User32.lib" is the path and "Gdi32.lib" is the ending filter
+                     */
+                     dependencies = dependencies ~ " " ~ dep.ending;
+                  }
+               }
             }
          }
          else if(dep.type == FileType.Remote)

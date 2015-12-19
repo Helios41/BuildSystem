@@ -7,10 +7,10 @@
       [
          ["call", "./make_dl.json", "-pSilent"],
          ["||", "./make_lib.json", "-pSilent"],
-         ["copy", "../dub.json", "../bob.json"],
+         ["copy", "../README.txt", "../README2.txt"],
          ["||", "../", "../test/", ".random"],         
          ["delete", "../toremove.txt"],
-         ["||", "../bob.json"],
+         ["||", "../README2.txt"],
          ["print", "before building!"],
          "build",
          ["print", "just built!"],
@@ -44,7 +44,7 @@
       ],
       "per-operations":
       [
-         ["copy", "../dub.json", "[OUTPUT_DIRECTORY]/some_stuff/bob.json"],
+         ["copy", "../README.txt", "[OUTPUT_DIRECTORY]/some_stuff/gitREADME.txt"],
          ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json", "1"],
          ["||", "../", "[OUTPUT_DIRECTORY]/djson/", "d", ".json", "1"],
          ["||", "../", "[OUTPUT_DIRECTORY]/mjson/", "m", ".json", "1"],

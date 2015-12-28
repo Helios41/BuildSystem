@@ -28,6 +28,7 @@
             "else": ["print", "doesn't have random"]
          },
          ["||", "-separator", " ", "Stuff variable:[VAR stuff]"],
+         ["||", "Stuff variable: [VAR THIS>stuff]"],
          ["print", "We're on an OS! ", {"if": "OS=Windows", "then": "We're on Windows!"}],
          {
             "if": "OS=Windows",

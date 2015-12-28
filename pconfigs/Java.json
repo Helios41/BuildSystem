@@ -21,10 +21,9 @@
                         "javac [SOURCES] [DEPENDENCIES]",
                         "echo Manifest-Version: 1.0 >> ./Manifest.txt",
                         "echo Main-Class: [VAR MainClass] >> ./Manifest.txt",
-                        "dir /s /b /o:gn *.class",
-                        "set REBUILD_Classes=test",
-                        "echo %REBUILD_Classes%",
-                        "jar cfm [PROJECT_NAME].jar Manifest.txt %REBUILD_Classes%"
+                        "dir /s /b /o:gn *.class > __compiled_class_list.txt",
+                        "type __compiled_class_list.txt",
+                        "jar cfm [PROJECT_NAME].jar Manifest.txt | type __compiled_class_list.txt"
                      ],
                      "else": "echo MainClass missing"
                   }

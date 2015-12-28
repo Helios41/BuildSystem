@@ -16,7 +16,8 @@ TO DO:
    -prevent modification of output dir (eg. set output dir as file)?
    -prevent copy from wiping file permissions on *nix
    -error messages (missing language, missing build type, non-existant files or directories, cant build, etc...)
-   -java pconfig still doesn't work
+   -fix java pConfig
+   -defines for c & c++
  
 BUGS:
    -cant fread a file right after fwrite
@@ -411,7 +412,7 @@ void main(string[] args)
    if(args.length < 2)
    {
       writeln("Insufficient arguments!");
-      writeln("Usage \'rebuild [config file]\'");
+      writeln("Usage \'rebuild config_file.json [ options... ]\'");
       return;
    }
    
@@ -921,9 +922,9 @@ void BuildOperation(RoutineState state)
             string output_directory_noslash = per_platform_state.build_info.build_folder.endsWith("/") ? per_platform_state.build_info.build_folder[0 .. per_platform_state.build_info.build_folder.lastIndexOf("/")] : per_platform_state.build_info.build_folder;
             string output_folder = output_directory_noslash ~ "/" ~ per_platform_state.build_info.platform.OS ~ "_" ~ per_platform_state.build_info.platform.arch;
             
-            if(exists(PathF(output_folder, per_platform_state.routine_info)))
+            if(exists(RelativePath(output_folder, per_platform_state.routine_info)))
             {
-               rmdirRecurse(PathF(output_folder, per_platform_state.routine_info));
+               rmdirRecurse(RelativePath(output_folder, per_platform_state.routine_info));
             }
             
             ExecutePerOperations(output_folder, per_platform_state);
@@ -1028,45 +1029,45 @@ void MoveOperation(RoutineInfo routine_info, string[] params)
 {
    if(params.length == 2)
    {
-      WriteMsg("\tMove ", PathF(params[0], routine_info), " -> ", PathF(params[1], routine_info));
-      CopyItem(PathF(params[0], routine_info), PathF(params[1], routine_info));
-      DeleteItem(PathF(params[0], routine_info));
+      WriteMsg("\tMove ", RelativePath(params[0], routine_info), " -> ", RelativePath(params[1], routine_info));
+      CopyItem(RelativePath(params[0], routine_info), RelativePath(params[1], routine_info));
+      DeleteItem(RelativePath(params[0], routine_info));
    }
    else if(params.length == 3)
    {
-      WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-      CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2]);
-      DeleteMatchingItems(PathF(params[0], routine_info), "", params[2]);
+      WriteMsg("\tMove ", RelativePath(params[0], routine_info), " (", params[2], ") -> ", RelativePath(params[1], routine_info));
+      CopyMatchingItems(RelativePath(params[0], routine_info), RelativePath(params[1], routine_info), "", params[2]);
+      DeleteMatchingItems(RelativePath(params[0], routine_info), "", params[2]);
    }
    else if(params.length == 4)
    {
       if(IsValid!int(params[3]))
       {
-         WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], ") -> ", PathF(params[1], routine_info));
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), "", params[2], to!int(params[3]));
-         DeleteMatchingItems(PathF(params[0], routine_info), "", params[2], to!int(params[3]));
+         WriteMsg("\tMove ", RelativePath(params[0], routine_info), " (", params[2], ") -> ", RelativePath(params[1], routine_info));
+         CopyMatchingItems(RelativePath(params[0], routine_info), RelativePath(params[1], routine_info), "", params[2], to!int(params[3]));
+         DeleteMatchingItems(RelativePath(params[0], routine_info), "", params[2], to!int(params[3]));
       }
       else
       {
-         WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
-         DeleteMatchingItems(PathF(params[0], routine_info), params[2], params[3]);
+         WriteMsg("\tMove ", RelativePath(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", RelativePath(params[1], routine_info));
+         CopyMatchingItems(RelativePath(params[0], routine_info), RelativePath(params[1], routine_info), params[2], params[3]);
+         DeleteMatchingItems(RelativePath(params[0], routine_info), params[2], params[3]);
       }
    }
    else if(params.length == 5)
    {
-      WriteMsg("\tMove ", PathF(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", PathF(params[1], routine_info));
+      WriteMsg("\tMove ", RelativePath(params[0], routine_info), " (", params[2], " ", params[3], ") -> ", RelativePath(params[1], routine_info));
    
       if(IsValid!int(params[4]))
       {
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3], to!int(params[4]));
-         DeleteMatchingItems(PathF(params[0], routine_info), params[2], params[3], to!int(params[4]));
+         CopyMatchingItems(RelativePath(params[0], routine_info), RelativePath(params[1], routine_info), params[2], params[3], to!int(params[4]));
+         DeleteMatchingItems(RelativePath(params[0], routine_info), params[2], params[3], to!int(params[4]));
       }
       else
       {
          writeln(params[4], " failed to convert from string to int!");
-         CopyMatchingItems(PathF(params[0], routine_info), PathF(params[1], routine_info), params[2], params[3]);
-         DeleteMatchingItems(PathF(params[0], routine_info), params[2], params[3]);
+         CopyMatchingItems(RelativePath(params[0], routine_info), RelativePath(params[1], routine_info), params[2], params[3]);
+         DeleteMatchingItems(RelativePath(params[0], routine_info), params[2], params[3]);
       }
    }
 }
@@ -1078,7 +1079,7 @@ void CallOperation(RoutineInfo routine_info, BuildInfo build_info, string[] para
    if(params.length >= 1)
    {
       const string default_platform_config_path = routine_info.platform_config_path; 
-      string config_file_path = PathF(params[0], routine_info);
+      string config_file_path = RelativePath(params[0], routine_info);
    
       if((params[0] == "=") || (params[0] == "||"))
       {
@@ -1112,7 +1113,7 @@ void ReplaceOperation(RoutineInfo routine_info, string[] params)
    {
       foreach(string file_name; params[2 .. $])
       {
-         string file_path = PathF(file_name, routine_info);
+         string file_path = RelativePath(file_name, routine_info);
          string file_contents = SFileReadText(file_path);
          file_contents = file_contents.replace(params[0], params[1]);
          SFileWrite(file_path, file_contents);
@@ -1196,7 +1197,7 @@ void FileWriteOperation(RoutineInfo routine_info, string[] params)
 {
    if(params.length > 1)
    {
-      string file_path = PathF(params[0], routine_info);
+      string file_path = RelativePath(params[0], routine_info);
       bool append = false;
       string to_write = "";
       
@@ -1601,7 +1602,7 @@ string[] GetLanguageFileEndings(string file_path, string language_name, string b
          if(HasJSON(build_type_json, "endings"))
          {
             JSONValue endings_json = build_type_json["endings"];
-            string[] file_endings = LoadStringArrayFromTag(state, endings_json, TagType.StringArray);
+            string[] file_endings = LoadStringArrayFromTag(state, endings_json, TagType.StringArray, null);
             return file_endings;
          }
       }
@@ -1620,7 +1621,7 @@ string[] GetLanguageSourceFileEndings(string file_path, string language_name, Ro
    {
       JSONValue sources_json = language_json["sources"];
       
-      string[] source_endings = LoadStringArrayFromTag(state, sources_json, TagType.StringArray);
+      string[] source_endings = LoadStringArrayFromTag(state, sources_json, TagType.StringArray, null);
       return source_endings;
    }
 
@@ -1733,8 +1734,7 @@ Variable[] GetVariables(RoutineState state,
          }
          else
          {
-            file_path = path;
-            file_path = PathF(file_path, state.routine_info);
+            file_path = RelativePath(path, state.routine_info);
          }
          
          routine_name = var_decl[var_decl.indexOf(">") + 1 .. var_decl.lastIndexOf(">")];
@@ -1750,8 +1750,7 @@ Variable[] GetVariables(RoutineState state,
          }
          else
          {
-            file_path = path;
-            file_path = PathF(file_path, state.routine_info);
+            file_path = RelativePath(path, state.routine_info);
          }
          
          routine_name = GetDefaultRoutine(file_path);
@@ -1788,7 +1787,7 @@ Variable[] GetVariables(RoutineState state,
       {
          string[] var_value_raw = LoadStringArrayFromTag(access_state,
                                                          access_json[var_name],
-                                                         TagType.StringArray);
+                                                         TagType.StringArray, null);
          
          var.value = var_value_raw;     
       }
@@ -1850,7 +1849,6 @@ Variable[] GetEndings(RoutineState state,
 const string fread_decl_begin = "[fread ";
 const string fread_decl_end = "]";
 
-//TODO: multiple freads in one line cause error
 FileInput[] GetFileInputs(RoutineState state, string tag_str)
 {
    int fread_count = cast(int) min(tag_str.count(fread_decl_begin),
@@ -1866,7 +1864,7 @@ FileInput[] GetFileInputs(RoutineState state, string tag_str)
       string fread_decl = tag_str[fread_index .. fread_end_index + 1];
       
       string fread_param = fread_decl[fread_decl_begin.length .. $ - fread_decl_end.length];
-      string file_path = PathF(fread_param, state.routine_info);
+      string file_path = RelativePath(fread_param, state.routine_info);
       
       freads[i].decl = fread_decl;
       
@@ -1917,7 +1915,7 @@ RoutineInfo MakeRoutine(string file_path,
             
             if(specified_platform_config_json.type() == JSON_TYPE.STRING)
             {
-               routine_info.platform_config_path = PathF(specified_platform_config_json.str(), routine_info);
+               routine_info.platform_config_path = RelativePath(specified_platform_config_json.str(), routine_info);
             }
          }
       }
@@ -1945,17 +1943,6 @@ bool HasJSON(JSONValue json, string ID)
 bool IsJSONBool(JSONValue json)
 {
    return (json.type() == JSON_TYPE.TRUE) || (json.type() == JSON_TYPE.FALSE);
-}
-
-//TODO: replace PathF with RelativePath
-string PathF(string str, RoutineInfo routine)
-{
-   string new_str = str;
-   
-   if(new_str.startsWith("./"))
-      new_str = new_str[2 .. $];
-
-   return routine.directory ~ new_str;
 }
 
 bool JSONMapString(JSONValue json, void delegate(string str, int i) map_func)
@@ -2059,9 +2046,39 @@ bool HandleConditional(RoutineState state,
          return false;
       }
       
+      case "TRUE(":
+      {
+         JSONValue routine_json = GetRoutineJSON(state.routine_info);
+         if(HasJSON(routine_json, value))
+         {
+            JSONValue value_json = routine_json[value];
+            
+            if(value_json.type() == JSON_TYPE.TRUE)
+            {
+               return true;
+            }
+         }
+         return false;
+      }
+      
+      case "FALSE(":
+      {
+         JSONValue routine_json = GetRoutineJSON(state.routine_info);
+         if(HasJSON(routine_json, value))
+         {
+            JSONValue value_json = routine_json[value];
+            
+            if(value_json.type() == JSON_TYPE.FALSE)
+            {
+               return true;
+            }
+         }
+         return false;
+      }
+      
       case "ISFILE(":
       {
-         string file_path = PathF(value, state.routine_info);
+         string file_path = RelativePath(value, state.routine_info);
          if(exists(file_path))
          {
             return isFile(file_path);
@@ -2071,7 +2088,7 @@ bool HandleConditional(RoutineState state,
       
       case "ISDIR(":
       {
-         string file_path = PathF(value, state.routine_info);
+         string file_path = RelativePath(value, state.routine_info);
          if(exists(file_path))
          {
             return isDir(file_path);
@@ -2108,14 +2125,9 @@ string RelativePath(string path, RoutineInfo routine)
       new_path = new_path[2 .. $];
       
    if(!IsDirPath(routine.directory))
-   {
-      writeln(routine.directory);
-      assert(false);
-   }
+      writeln("Invalid Routine Directory! \"", routine.directory, "\"");
    
-   new_path = routine.directory ~ new_path;
-      
-   return new_path;
+   return routine.directory ~ new_path;
 }
 
 string FormatPath(string path)
@@ -2140,7 +2152,8 @@ string FormatPath(string path)
 ProcessedTag ProcessTag(RoutineState state,
                         string str,
                         string[string] replace_additions,
-                        TagType tag_type)
+                        TagType tag_type,
+                        string tt_string_seperator)
 { 
    string new_str = str.replace("[ARCH_NAME]", state.build_info.platform.arch)
                        .replace("[OS_NAME]", state.build_info.platform.OS)
@@ -2150,6 +2163,8 @@ ProcessedTag ProcessTag(RoutineState state,
                        .replace("[PATCH_VERSION]", to!string(state.version_info.patch))
                        .replace("[VERSION_TYPE]", state.version_info.appended)
                        .replace("[VERSION]", GetVersionString(state.version_info));
+  
+   //if(tag_type == TagType.String) writeln("TTS: ", str);
   
    if(replace_additions != null)
    {
@@ -2179,8 +2194,6 @@ ProcessedTag ProcessTag(RoutineState state,
       {
          tag_list.insert(var_value);
       }
-      
-      writeln(tag_list[0 .. $]);
    }
    
    foreach(Variable var; GetVariables(state, new_str))
@@ -2222,8 +2235,7 @@ ProcessedTag ProcessTag(RoutineState state,
    
    if(tag_type == TagType.String)
    {
-      //TODO: does this always want to be ""
-      result.str = CombindStrings(result.array, "");
+      result.str = CombindStrings(result.array, tt_string_seperator);
    }
       
    return result;
@@ -2246,7 +2258,7 @@ string LoadStringFromTag(RoutineState state,
             
             JSONMapString(if_json, (string condit_str, int i)
             {
-               condit_state = condit_state && HandleConditional(state, ProcessTag(state, condit_str, replace_additions, TagType.String).str);
+               condit_state = condit_state && HandleConditional(state, ProcessTag(state, condit_str, replace_additions, TagType.String, "").str);
             });
             
             if(condit_state)
@@ -2258,7 +2270,7 @@ string LoadStringFromTag(RoutineState state,
 						
 						JSONMapString(then_json, (string value_str, int i)
 						{
-							result = result ~ ProcessTag(state, value_str, replace_additions, TagType.String).str;
+							result = result ~ ProcessTag(state, value_str, replace_additions, TagType.String, "").str;
 						});
 
 						return result;
@@ -2279,7 +2291,7 @@ string LoadStringFromTag(RoutineState state,
 						
 						JSONMapString(else_json, (string value_str, int i)
 						{
-							result = result ~ ProcessTag(state, value_str, replace_additions, TagType.String).str;	
+							result = result ~ ProcessTag(state, value_str, replace_additions, TagType.String, "").str;	
 						});					
 
                   return result;
@@ -2301,7 +2313,6 @@ string LoadStringFromTag(RoutineState state,
    return null;
 }
 
-//TODO: improve LoadBoolFromTag to match LoadStringFromTag functionallity
 bool LoadBoolFromTag(RoutineState state,
                      JSONValue json)
 {
@@ -2334,6 +2345,10 @@ bool LoadBoolFromTag(RoutineState state,
                {
                   return (else_json.type() == JSON_TYPE.TRUE); 
                }
+               else if(else_json.type() == JSON_TYPE.OBJECT)
+               {
+                  return LoadBoolFromTag(state, else_json);
+               }
             }
          }
       }
@@ -2351,15 +2366,16 @@ void InsertProcessedTags(Array!string *sarray,
                          RoutineState state,
                          string str,
                          string[string] replace_additions,
-                         TagType type)
+                         TagType type,
+                         string tt_string_seperator)
 {
    if(type == TagType.String)
    {
-      sarray.insert(ProcessTag(state, str, replace_additions, TagType.String).str);
+      sarray.insert(ProcessTag(state, str, replace_additions, TagType.String, tt_string_seperator).str);
    }
    else if(type == TagType.StringArray)
    {
-      foreach(string tag_str; ProcessTag(state, str, replace_additions, TagType.StringArray).array)
+      foreach(string tag_str; ProcessTag(state, str, replace_additions, TagType.StringArray, tt_string_seperator).array)
       {
          sarray.insert(tag_str);
       }
@@ -2380,7 +2396,8 @@ void LoadStringArrayFromTag_internal(RoutineState state,
                                      JSONValue json,
                                      Array!string *sarray,
                                      string[string] replace_additions,
-                                     TagType type)
+                                     TagType type,
+                                     string tt_string_seperator)
 {
    if(HasJSON(json, "if") && HasJSON(json, "then"))
    {
@@ -2393,7 +2410,7 @@ void LoadStringArrayFromTag_internal(RoutineState state,
          
          JSONMapString(if_json, (string condit_str, int i)
          {
-            condit_state = condit_state && HandleConditional(state, ProcessTag(state, condit_str, replace_additions, TagType.String).str);
+            condit_state = condit_state && HandleConditional(state, ProcessTag(state, condit_str, replace_additions, TagType.String, "").str);
          });
          
          if(condit_state)
@@ -2404,21 +2421,21 @@ void LoadStringArrayFromTag_internal(RoutineState state,
                {
                   if(array_element.type == JSON_TYPE.OBJECT)
                   {
-                     LoadStringArrayFromTag_internal(state, array_element, sarray, replace_additions, type);
+                     LoadStringArrayFromTag_internal(state, array_element, sarray, replace_additions, type, tt_string_seperator);
                   }
                   else if(array_element.type == JSON_TYPE.STRING)
                   {
-                     InsertProcessedTags(sarray, state, array_element.str(), replace_additions, type);
+                     InsertProcessedTags(sarray, state, array_element.str(), replace_additions, type, tt_string_seperator);
                   }
                }
             }
 				else if(then_json.type() == JSON_TYPE.STRING)
 				{
-               InsertProcessedTags(sarray, state, then_json.str(), replace_additions, type);
+               InsertProcessedTags(sarray, state, then_json.str(), replace_additions, type, tt_string_seperator);
 				}
 				else if(then_json.type() == JSON_TYPE.OBJECT)
 				{
-					LoadStringArrayFromTag_internal(state, then_json, sarray, replace_additions, type);
+					LoadStringArrayFromTag_internal(state, then_json, sarray, replace_additions, type, tt_string_seperator);
 				}
          }
          else if(HasJSON(json, "else"))
@@ -2430,25 +2447,26 @@ void LoadStringArrayFromTag_internal(RoutineState state,
 				{ 
             	JSONMapString(else_json, (string str, int i)
             	{
-               	InsertProcessedTags(sarray, state, str, replace_additions, type);
+               	InsertProcessedTags(sarray, state, str, replace_additions, type, tt_string_seperator);
             	});
 				}
 				else if(else_json.type() == JSON_TYPE.OBJECT)
 				{
-					LoadStringArrayFromTag_internal(state, else_json, sarray, replace_additions, type);
+					LoadStringArrayFromTag_internal(state, else_json, sarray, replace_additions, type, tt_string_seperator);
 				} 
          }
       }
    }
-   
-   //writeln((*sarray)[]);
 }
 
 string[] LoadStringArrayFromTag(RoutineState state,
                                 JSONValue json,
                                 TagType type,
+                                string tt_string_seperator,
                                 string[string] replace_additions = null)
 {
+   if(type == TagType.String) assert(tt_string_seperator != null);
+
    Array!string sarray = Array!string();
    
    if(json.type() == JSON_TYPE.ARRAY)
@@ -2457,24 +2475,23 @@ string[] LoadStringArrayFromTag(RoutineState state,
       {
          if(json_value.type() == JSON_TYPE.OBJECT)
          {
-            LoadStringArrayFromTag_internal(state, json_value, &sarray, replace_additions, type);
+            LoadStringArrayFromTag_internal(state, json_value, &sarray, replace_additions, type, tt_string_seperator);
          }
          else if(json_value.type() == JSON_TYPE.STRING)
          {
-            InsertProcessedTags(&sarray, state, json_value.str(), replace_additions, type);
+            InsertProcessedTags(&sarray, state, json_value.str(), replace_additions, type, tt_string_seperator);
          }
       }
    }
    else if(json.type() == JSON_TYPE.OBJECT)
    {
-      LoadStringArrayFromTag_internal(state, json, &sarray, replace_additions, type);
+      LoadStringArrayFromTag_internal(state, json, &sarray, replace_additions, type, tt_string_seperator);
    }
    else if(json.type() == JSON_TYPE.STRING)
    {
-      InsertProcessedTags(&sarray, state, json.str(), replace_additions, type);
+      InsertProcessedTags(&sarray, state, json.str(), replace_additions, type, tt_string_seperator);
    }
    
-   //writeln(sarray[]);
    if(sarray.length > 0)
    {
       string[] output = new string[sarray.length];
@@ -2509,7 +2526,7 @@ CommandInformation[] LoadCommandsFromTag(RoutineState state,
          }
          else
          {
-            string[] strings = LoadStringArrayFromTag(state, json_value, TagType.StringArray, replace_additions);
+            string[] strings = LoadStringArrayFromTag(state, json_value, TagType.StringArray, null, replace_additions);
             
             if(strings == null)
                continue;
@@ -2552,13 +2569,12 @@ FileDescription[] LoadFileDescriptionsFromTag(RoutineState state,
       
          if(json_value.type() == JSON_TYPE.STRING)
          {
-            //TODO: Process tag!
-            fdesc.path = json_value.str();
+            fdesc.path = ProcessTag(state, json_value.str(), null, TagType.String, "").str;
             fdesc.filtered = false;
          }
          else
          {
-            string[] strings = LoadStringArrayFromTag(state, json_value, TagType.String);
+            string[] strings = LoadStringArrayFromTag(state, json_value, TagType.StringArray, null);
             
             if(strings == null)
                continue;
@@ -2883,7 +2899,8 @@ bool GetJSONStringArray(RoutineState state, string var_name, JSONStringArray *re
       
       result._val = LoadStringArrayFromTag(state,
                                            var_json,
-                                           TagType.StringArray);
+                                           TagType.StringArray,
+                                           null);
       return true;
    }
    
@@ -2931,6 +2948,7 @@ void CopyMatchingItems_internal(string source, string destination, string begini
       if(!exists(dest_folder))
          mkdirRecurse(dest_folder);
       
+      result.insert(destination);
       SFileCopy(source, destination);
    }
 }
@@ -3029,9 +3047,9 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
 {
    string version_string = GetVersionString(state.version_info);
   
-   if(!exists(PathF(output_folder, state.routine_info)))
+   if(!exists(RelativePath(output_folder, state.routine_info)))
    {
-      mkdirRecurse(PathF(output_folder, state.routine_info));
+      mkdirRecurse(RelativePath(output_folder, state.routine_info));
    }
    
    JSONValue routine_json = GetRoutineJSON(state.routine_info);
@@ -3042,11 +3060,11 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
    if(HasJSON(routine_json, "source"))
    {
       FileDescription[] source_folders = LoadFileDescriptionsFromTag(state, routine_json["source"]);
-      writeln(source_folders);
+      //writeln(source_folders);
       
       foreach(FileDescription source; source_folders)
       {
-         writeln("Src " ~ PathF(source.path, state.routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
+         //writeln("Src " ~ RelativePath(source.path, state.routine_info) ~ "|" ~ source.begining ~ "|" ~ source.ending);
          
          if(source.type == FileType.Local)
          {
@@ -3054,11 +3072,11 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
             
             if(source.filtered)
             {
-               src_files = CopyMatchingItems(PathF(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending, int.max);               
+               src_files = CopyMatchingItems(RelativePath(source.path, state.routine_info), build_dir ~ "/", source.begining, source.ending, int.max);               
             }
             else
             {
-               string source_path = PathF(source.path, state.routine_info);
+               string source_path = RelativePath(source.path, state.routine_info);
                
                if(exists(source_path))
                {
@@ -3118,16 +3136,16 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
       {
          if(dep.type == FileType.Local)
          {
-            string dep_path = PathF(dep.path, state.routine_info);
+            string dep_path = RelativePath(dep.path, state.routine_info);
             
             if(exists(dep_path))
             {
-               WriteMsg("FDep " ~ PathF(dep.path, state.routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
+               WriteMsg("FDep " ~ RelativePath(dep.path, state.routine_info) ~ "|" ~ dep.begining ~ "|" ~ dep.ending);
                string[] dep_files = null;
              
                if(dep.filtered)
                {
-                  dep_files = CopyMatchingItems(PathF(dep.path, state.routine_info), build_dir ~ "/", dep.begining, dep.ending);
+                  dep_files = CopyMatchingItems(RelativePath(dep.path, state.routine_info), build_dir ~ "/", dep.begining, dep.ending);
                }
                else
                {
@@ -3160,7 +3178,8 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
                   if((dep.ending != "") && dep.filtered)
                   {
                      /**
-                        Ok, so this is a total hack and i intend on someday fixing it,
+                        NOTE:
+                        Ok, so this is a total hack and I intend to someday fix it,
                         which may entail totally changing the syntax of the file descriptions,
                         but this is a bug fix for the fact that ["User32.lib", "Gdi32.lib"] is
                         treaded as if "User32.lib" is the path and "Gdi32.lib" is the ending filter
@@ -3232,6 +3251,7 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
    string[] commands = LoadStringArrayFromTag(state,
                                               GetLanguageCommandTag(state.routine_info.platform_config_path, state.build_info.language, state.build_info.type),
                                               TagType.String,
+                                              " ",
                                               replace_additions);
   
 	version(Windows)
@@ -3269,7 +3289,7 @@ void Build(string output_folder, string build_dir, RoutineState state, string ou
    {
       if(state.build_info.outputs.canFind(file_ending))
       {
-         CopyItem(build_dir ~ "/" ~ state.build_info.project_name ~ file_ending, PathF(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
+         CopyItem(build_dir ~ "/" ~ state.build_info.project_name ~ file_ending, RelativePath(output_folder, state.routine_info) ~ "/" ~ output_file_name ~ file_ending);
       }
    }
 }

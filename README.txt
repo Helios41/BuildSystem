@@ -2,13 +2,21 @@ Custom Build System:
    -multi programming language
    -easy (to a degree)
    -multi-platform & multi-architecture
+   
+Complete Build Available! Lots of bugs!
 
-Still being actively developed, use at your own risk.
-Things will change and break!
-Complete build coming soon
+Requires CURL for network support
 
-Requires CURL
+Known Issues:
+   -Binaries on Linux don't have executable permissions
+   -Every once in a while the output file reports "Access is denied"
+    when trying to delete the temporary copy
 
+Usage:
+   rebuild config_file.json [ options... ]
+                  ---OR---
+   rebuild -pLink platform_config_to_link.json
+   
 Documentation:
    Configuration files are in JSON format.
    
@@ -53,7 +61,7 @@ Documentation:
       [
          "path/to/source",
          ["Remote", "http://www.some.url.file"],
-         "[EXTERN _file_>_routine_is_optional_>_var_]"
+         "[VAR _file_>_routine_is_optional_>_var_]"
       ]
    },
    "another function name":

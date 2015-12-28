@@ -63,13 +63,13 @@
                            "if": "OPT=true",
                            "then": 
                            {
-                              "if": "HASVAR(DebugEnabled)",
+                              "if": "TRUE(DebugEnabled)",
                               "then": "cl /O2 /Zi /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
                               "else": "cl /O2 /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
                            },
                            "else":
                            {
-                              "if": "HASVAR(DebugEnabled)",
+                              "if": "TRUE(DebugEnabled)",
                               "then": "cl /Od /Zi /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]",
                               "else": "cl /Od /Fe[PROJECT_NAME] [SOURCES] /link [DEPENDENCIES]"
                            }

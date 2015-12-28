@@ -4,13 +4,15 @@
    {
       "language": "C",
       "type": "dynamic",
-      "build" : "../dltest/",
+      "build" : "../output/dynamic_test/",
+      "target": "all",
+      "optimized": false,
+      "project": "dynamic_test",
       "source": 
       [
-         "../test/DLibrary.c",
-         ["../test/", ".h"]
+         "../source/dynamic_test.c",
+         ["../source/", ".h"]
       ],
-      "target": "all",
       "exports": 
       [
          "add_integers_foo",
@@ -18,8 +20,6 @@
             "if": "OS=Windows",
             "then": "windows_foo"
          }
-      ],
-      "optimized": false,
-      "project": "DLTest"
+      ]
    }
 }

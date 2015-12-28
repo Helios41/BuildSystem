@@ -4,10 +4,10 @@
    {
       "language": "C",
       "type": "static",
-      "build": "../static_lib/",
-      "source": "../test/static_lib.c",
+      "build": "../output/static_test/",
+      "source": "../source/static_test.c",
       "target": "all",
-      "project": "static_lib",
+      "project": "static_test",
       "version": [0, 0, 0],
       "version_string": "[MAJOR_VERSION]_[MINOR_VERSION]_[PATCH_VERSION]"
    }

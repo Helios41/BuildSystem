@@ -7,10 +7,6 @@
       [
          ["call", "./make_dl.json", "-pSilent"],
          ["||", "./make_lib.json", "-pSilent"],
-         ["copy", "../README.txt", "../README2.txt"],
-         ["||", "../", "../test/", ".random"],         
-         ["delete", "../toremove.txt"],
-         ["||", "../README2.txt"],
          ["print", "before building!"],
          "build",
          ["print", "just built!"],
@@ -38,8 +34,8 @@
             "if": "OS=Linux",
             "then": ["print", "Printed on Linux"]
          },
-         ["fwrite", "../testbuild/test.txt", "-append", "TEST "],
-         ["print", "[fread ../testbuild/test.txt]"],
+         ["fwrite", "../output/testbuild/test.txt", "-append", "TEST "],
+         ["print", "[fread ../output/testbuild/test.txt]"],
          ["call", "=", "SayHi"],
          ["print", "Executable ending on [OS_NAME] is [ENDING C executable]"]
       ],
@@ -49,17 +45,16 @@
          ["||", "../", "[OUTPUT_DIRECTORY]/jsons/", ".json", "1"],
          ["||", "../", "[OUTPUT_DIRECTORY]/djson/", "d", ".json", "1"],
          ["||", "../", "[OUTPUT_DIRECTORY]/mjson/", "m", ".json", "1"],
-         ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.dll", "[OUTPUT_DIRECTORY]/DLTest.dll"], 
-         ["||", "../dltest/[OS_NAME]_[ARCH_NAME]/DLTest.so", "[OUTPUT_DIRECTORY]/DLTest.so"],
+         ["||", "../output/dynamic_test/[OS_NAME]_[ARCH_NAME]/dynamic_test.dll", "[OUTPUT_DIRECTORY]/dynamic_test.dll"], 
+         ["||", "../output/dynamic_test/[OS_NAME]_[ARCH_NAME]/dynamic_test.so", "[OUTPUT_DIRECTORY]/dynamic_test.so"],
          "build"
       ],
       "type": "executable",
-      "build" : "../testbuild/",
+      "build" : "../output/testbuild/",
       "source": 
       [
-         ["Remote", "https://raw.githubusercontent.com/Helios41/BuildSystem/master/test/remote_file.h"],
-         "../test/helloworld.c",
-         ["../test/", ".h"]
+         ["Remote", "https://raw.githubusercontent.com/Helios41/BuildSystem/master/conformance_test/source/remote_file.h"],
+         "../source/helloworld.c"
       ],
       "target": ["Windows", ["X86_64", "IA-64"], "Linux", ["X86"]],
       "dependencies": 
@@ -72,7 +67,7 @@
             "if": "OS=Linux",
             "then": "/lib/i386-linux-gnu/libdl.so.2"
          },
-         ["../static_lib/[OS_NAME]_[ARCH_NAME]/", "static_lib", "[ENDING C static]"]
+         ["../output/static_test/[OS_NAME]_[ARCH_NAME]/", "static_test", "[ENDING C static]"]
       ],
       "WindowsDeps":
       [
@@ -89,26 +84,11 @@
       "version": [0, 0, 0, "test"],
       "version_break": "Ll"
    },
-   "MoveBob":
+   "Hello World":
    {
       "operations":
       [
-         ["move", "../bob.json", "../test/bob.json"]
-      ]
-   },
-   "SayHi":
-   {
-      "operations":
-      [
-         ["print", "hello"]
-      ]
-   },
-   "CallTest":
-   {
-      "operations":
-      [
-         ["call", "test.json", "Func1", "Func2"],
-         ["||", "test.json"]
+         ["print", "Hello World!"]
       ]
    }
 }
